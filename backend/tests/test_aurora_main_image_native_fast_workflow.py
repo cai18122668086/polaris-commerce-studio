@@ -44,6 +44,16 @@ from .test_api import dispatch_pending, idem, upload_asset
 PROFILE = "aurora_native_fast_identity"
 
 
+@pytest.fixture(autouse=True)
+def _legacy_native_compiler(monkeypatch):
+    """These cases cover the retained identity + native-compiler plan path.
+
+    New main-image plans are authored in one pass by default; see
+    test_aurora_main_image_authored_workflow.py.
+    """
+    monkeypatch.setenv("POLARIS_MAIN_IMAGE_AUTHORED_PLAN", "false")
+
+
 class NativeGateway(SyntheticSuiteGateway):
     async def plan(self, request):
         assert request.planning_profile == PROFILE, (
@@ -63,6 +73,21 @@ class NativeGateway(SyntheticSuiteGateway):
         return replace(
             result, provider_request_id=f"{result.provider_request_id}:{request.job_id}"
         )
+
+
+class StubbornGateway(NativeGateway):
+    """Rejects one page on every automatic try of the first order."""
+
+    def __init__(self, page, times):
+        super().__init__(failure_page=page)
+        self.page, self.times = page, times
+
+    async def edit(self, request):
+        result = await super().edit(request)
+        if request.page_number == self.page and self.times > 0:
+            self.times -= 1
+            self.failure_page = self.page if self.times else None
+        return result
 
 
 def create(client, tmp_path, *, auto=True, gateway=None, concurrency=6):
@@ -252,10 +277,12 @@ def test_native_fast_rejects_plan_variant_binding_mismatch(client, tmp_path, bin
 
 
 def test_native_fast_failed_page_retry_uses_frozen_native_prompt_only(client, tmp_path):
-    job_id, gateway = create(client, tmp_path, gateway=NativeGateway(failure_page=3))
+    job_id, gateway = create(client, tmp_path, gateway=StubbornGateway(3, 3))
     dispatch_pending(client)
     initial = detail(client, job_id)
     assert initial["status"] == "partial" and initial["succeeded_item_count"] == 5
+    # Page 3 was tried automatically three times inside the order first.
+    assert [c.page_number for c in gateway.image_calls].count(3) == 3
     assert {"retry", "clone"} <= set(initial["allowed_actions"])
     original = private_plan(client, job_id)
     assert_no_native_closure(original)
@@ -263,7 +290,7 @@ def test_native_fast_failed_page_retry_uses_frozen_native_prompt_only(client, tm
     assert_no_native_closure(private_plan(client, child_id))
     dispatch_pending(client)
     current = assert_delivery(client, child_id)
-    assert len(gateway.planner_calls) == 1 and len(gateway.image_calls) == 7
+    assert len(gateway.planner_calls) == 1 and len(gateway.image_calls) == 9
     assert gateway.image_calls[-1].page_number == 3
     assert gateway.image_calls[-1].prompt == original["pages"][2]["prompt"]
     assert current["cost"]["actual_credits"] == 8

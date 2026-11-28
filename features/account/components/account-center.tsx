@@ -78,6 +78,7 @@ import {
   jobTypeLabel,
 } from "@/lib/jobs/presentation";
 import styles from "./account-center.module.css";
+import { withBasePath } from "@/lib/base-path";
 
 type Page =
   | "overview"
@@ -357,7 +358,7 @@ function AccountCenter({ workspaceId }: { workspaceId: string }) {
       <header className="topbar">
         <div className="topbar-inner">
           <Link className="brand" href="/" aria-label="极光商绘首页">
-            <img src="/polaris-mark.svg" alt="" />
+            <img src={withBasePath("/polaris-mark.svg")} alt="" />
             <span>
               极光商绘<small>POLARIS STUDIO</small>
             </span>
@@ -392,7 +393,7 @@ function AccountCenter({ workspaceId }: { workspaceId: string }) {
       <div className="app-layout">
         <aside className={`sidebar ${mobileOpen ? "mobile-open" : ""}`}>
           <div className="sidebar-title">
-            个人中心<span>MY SPACE</span>
+            个人中心<span>我的空间</span>
           </div>
           <nav aria-label="个人中心导航">
             {pages.map((item) => (
@@ -500,7 +501,7 @@ function Overview({
         <div className="welcome-content">
           <div className="eyebrow">
             <span className="hello-dot" />
-            YOUR CREATIVE SPACE
+            你的创作空间
           </div>
           <h2>
             你好，{name}
@@ -531,7 +532,7 @@ function Overview({
           <span className="hero-star">✦</span>
           <span className="tiny-star a">✦</span>
           <span className="tiny-star b">✦</span>
-          <span className="hero-tag">MAKE IT SHINE.</span>
+          <span className="hero-tag">让它出彩。</span>
         </div>
       </section>
       <section className="stats-grid">
@@ -736,7 +737,7 @@ function Membership({
     <div className="page-content membership-page">
       <div className="pricing-intro">
         <div>
-          <span className="eyebrow">MORE ROOM FOR YOUR IDEAS</span>
+          <span className="eyebrow">给想法更多空间</span>
           <h2>给创作，留足发挥空间。</h2>
           <p>创作积分全站通用，单图、套图、详情页随心创作。</p>
         </div>

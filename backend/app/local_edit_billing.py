@@ -14,10 +14,14 @@ from .models import (
 from .services import credit_enforcement_enabled, release_credits, settle_credits
 
 BILLING_POLICY = "local-edit-generated-image-v1"
+# Marks a generation that spent one of a generated image's free edits.
+INCLUDED_MARKER = "billing_free_edit"
 
 
 def receipt_for(session: Session, asset: AssetRecord) -> CreditReservationRecord | None:
-    paid_job = (asset.asset_metadata or {}).get("billing_paid_job_id")
+    metadata = asset.asset_metadata or {}
+    paid_job = metadata.get("billing_paid_job_id")
+    included = metadata.get(INCLUDED_MARKER) is True
     receipts = []
     if isinstance(paid_job, str):
         direct = session.scalar(
@@ -25,7 +29,8 @@ def receipt_for(session: Session, asset: AssetRecord) -> CreditReservationRecord
                 CreditReservationRecord.workspace_id == asset.workspace_id,
                 CreditReservationRecord.job_id == paid_job,
                 CreditReservationRecord.status == "settled",
-                CreditReservationRecord.settled_credits > 0,
+                # A free edit settles its own reservation at zero.
+                CreditReservationRecord.settled_credits >= (0 if included else 1),
             )
         )
         if direct is not None:
@@ -120,6 +125,9 @@ def settle_generation(session: Session, job_id: str, locked: AssetRecord) -> Non
     if raw is None:
         raise RuntimeError("Generation receipt is missing its immutable raw image.")
     paid = receipt_for(session, raw)
+    from .free_edits import is_free
+
+    included = is_free(job.configuration)
     if paid is not None and paid.job_id != job.id:
         # Recovery/review of an already paid generation never becomes a second bill.
         job.configuration = {
@@ -129,6 +137,15 @@ def settle_generation(session: Session, job_id: str, locked: AssetRecord) -> Non
         }
         release_credits(session, job)
         job.actual_credits = 0
+    elif included:
+        settle_credits(session, job, 0)
+        paid = session.scalar(
+            select(CreditReservationRecord).where(
+                CreditReservationRecord.workspace_id == job.workspace_id,
+                CreditReservationRecord.job_id == job.id,
+                CreditReservationRecord.status == "settled",
+            )
+        )
     else:
         settle_credits(session, job, int(job.estimated_credits or 0))
         paid = session.scalar(
@@ -146,5 +163,6 @@ def settle_generation(session: Session, job_id: str, locked: AssetRecord) -> Non
             **(asset.asset_metadata or {}),
             "billing_policy": BILLING_POLICY,
             "billing_paid_job_id": paid.job_id if paid is not None else None,
+            **({INCLUDED_MARKER: True} if included and paid is not None else {}),
         }
     session.flush()

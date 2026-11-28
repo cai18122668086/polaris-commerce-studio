@@ -1,11 +1,12 @@
 """Owned immutable writing documents; explicit draft adoption uses existing history."""
 
 import copy
+import re
 import subprocess
 from datetime import UTC
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import Any, cast
+from typing import Any, Literal, cast
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Query, Request
@@ -14,6 +15,9 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import video_benchmark_platforms as benchmark_platforms
+from . import video_credit_billing as video_credits
+from . import video_script_library as library
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
@@ -48,6 +52,7 @@ from .video_writing_contracts import (
     SaveWritingFacts,
     SaveWritingReference,
     SaveWritingResult,
+    SourceMetrics,
     WritingAnalysis,
     WritingDocumentPage,
     WritingDraft,
@@ -72,6 +77,18 @@ router = APIRouter(
     prefix="/api/v1/video-studio/workspaces/{workspace_id}",
     tags=["video-writing-workflow"],
 )
+
+
+PLACEHOLDER = re.compile(r"【[^】]*】|\[[^\]]*\]|[XＸxｘ]{2,}|＿{2,}|_{2,}|待补|待填")
+
+
+def ratio(item: dict[str, Any], key: str) -> float | None:
+    likes, part = item.get("like_count"), item.get(key)
+    return (
+        part / likes
+        if isinstance(likes, int) and likes and isinstance(part, int)
+        else None
+    )
 
 
 def enabled(request: Request) -> Settings:
@@ -347,6 +364,10 @@ def save_benchmark_reference(
         raise ApiError(404, "VIDEO_ASSISTANCE_NOT_FOUND", "未找到该对标提取任务。")
     own_project(session, workspace, task.project_id)
     source = BenchmarkExtractionSource.model_validate(task.inputs["benchmark_source"])
+    item = task.inputs.get("benchmark_item") or {}
+    platform_name = {"douyin": "抖音", "xiaohongshu": "小红书", "bilibili": "B站"}.get(
+        source.platform, "抖音"
+    )
     if task.status != "completed" or task.result.get("source_url") != source.source_url:
         raise ApiError(409, "VIDEO_TRANSCRIPT_NOT_READY", "本次提取原文尚未就绪。")
     try:
@@ -356,14 +377,40 @@ def save_benchmark_reference(
                 "original_text": task.result.get("text", ""),
                 "url": source.source_url,
                 "note": (
-                    f"抖音对标「{source.keyword}」作品 {source.platform_id}。"
+                    f"{platform_name}对标「{source.keyword}」"
+                    f"作品 {source.platform_id}。"
                     f"搜索页 {source.search_task_id}，"
                     f"采集于 {source.captured_at.isoformat()}。"
-                    "语音转写，正文待核对。"
+                    + (
+                        "这条视频没有口播，原文取自笔记正文。"
+                        if task.result.get("source") == "note_text"
+                        else "语音转写，正文待核对。"
+                    )
                 ),
             }
         )
         reference.source_project_revision = task.inputs["revision"]
+        if item:
+            metrics = SourceMetrics.model_validate(
+                {
+                    "platform": source.platform,
+                    **{
+                        key: item.get(key)
+                        for key in SourceMetrics.model_fields
+                        if key not in {"platform", "readings"} and key in item
+                    },
+                    "title": (item.get("title") or "")[:200],
+                    "readings": benchmark_platforms.performance(
+                        {
+                            "collect_like_ratio": ratio(item, "collect_count"),
+                            "share_like_ratio": ratio(item, "share_count"),
+                            "comment_like_ratio": ratio(item, "comment_count"),
+                        }
+                    ),
+                }
+            )
+            reference.source_metrics = metrics
+            reference.interaction_evidence = "public_counts"
     except ValueError:
         raise ApiError(
             422, "VIDEO_REFERENCE_REQUIRED", "本次提取无可拆解原文。"
@@ -417,6 +464,10 @@ def create_task(
     parameters = body.model_dump(mode="json")
     if body.draft_mode is None:
         parameters.pop("draft_mode")
+    if not body.variant:
+        parameters.pop("variant")
+    if body.platform is None:
+        parameters.pop("platform")
     fingerprint = digest({"workflow": "writing", **parameters})
     query = select(VideoAssistanceRecord).where(
         VideoAssistanceRecord.workspace_id == workspace.workspace_id,
@@ -469,7 +520,40 @@ def create_task(
             facts_document_id=facts.id,
             facts=facts.body,
             draft_mode=body.draft_mode or "shadow",
+            variant=body.variant,
+            # v3: every new draft also writes the publish title and body.
+            publish_platform=body.platform
+            or (
+                (ref.body.get("source_metrics") or {}).get("platform")
+                if (ref.body.get("source_metrics") or {}).get("platform")
+                in {"douyin", "xiaohongshu"}
+                else "douyin"
+            ),
         )
+    if body.kind == "ref_compare":
+        benchmarks: list[dict[str, Any]] = []
+        for ident in body.analysis_document_ids:
+            analysis = own_document(session, workspace, str(ident), "analysis")
+            source = own_document(
+                session, workspace, str(analysis.reference_document_id), "reference"
+            )
+            parents += [analysis, source]
+            benchmarks.append(
+                {
+                    "label": f"对标{len(benchmarks) + 1}",
+                    "reference_document_id": source.id,
+                    "analysis_document_id": analysis.id,
+                    "opening_text": source.body["original_text"][:600],
+                    "source_metrics": source.body.get("source_metrics"),
+                    "analysis": analysis.body,
+                }
+            )
+        if ref.id not in {row["reference_document_id"] for row in benchmarks}:
+            raise ApiError(
+                409, "VIDEO_WRITING_REFERENCE_CHANGED", "对比的对标里不含所选原文。"
+            )
+        inputs["benchmarks"] = benchmarks
+        parents = list({p.id: p for p in parents}.values())
     if any(p.project_id != project.id for p in parents):
         raise ApiError(404, "VIDEO_WRITING_DOCUMENT_NOT_FOUND", "资料属于另一项目。")
     task_id = str(uuid4())
@@ -487,6 +571,14 @@ def create_task(
     )
     session.add(row)
     try:
+        video_credits.hold(
+            session,
+            settings,
+            workspace.workspace_id,
+            "writing_generate",
+            "video_assistance",
+            row.id,
+        )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -496,6 +588,12 @@ def create_task(
         raise ApiError(409, "VIDEO_REQUEST_REUSED", "文稿请求发生冲突。") from None
     background.add_task(
         process, request.app.state.session_factory, row.id, provider(request)
+    )
+    background.add_task(
+        video_credits.settle_after,
+        request.app.state.session_factory,
+        "video_assistance",
+        row.id,
     )
     return task_response(row)
 
@@ -507,6 +605,27 @@ def save_result(
     workspace: VideoWorkspace,
     session: SessionDependency,
 ) -> dict:
+    # The library entry is found by its document id (writing_document_id);
+    # the document response itself stays exactly what it was.
+    result = store_result(body, request, workspace, session)
+    result.pop("library_entry_id", None)
+    return result
+
+
+def store_result(
+    body: SaveWritingResult,
+    request: Request,
+    workspace: WorkspaceContext,
+    session: Session,
+    *,
+    library_source: Literal["auto_writing", "manual"] = "manual",
+    library_key: str | None = None,
+) -> dict:
+    """Save a checked result; a draft also lands in the script library once.
+
+    The manual flow's key is its task (one task = one version); the auto
+    flow passes 「run id + version」.
+    """
     require_workspace_write(workspace)
     enabled(request)
     task = session.get(VideoAssistanceRecord, str(body.task_id))
@@ -556,29 +675,37 @@ def save_result(
             else WritingDraft
         )
         parsed_draft = draft_model.model_validate(task.result["draft"])
-        text = validate_draft(
-            parsed_draft,
-            WritingReference.model_validate(task.inputs["reference"]),
-            WritingFacts.model_validate(task.inputs["facts"]),
-            WritingAnalysis.model_validate(task.inputs["analysis"]),
-        )
+        source = WritingReference.model_validate(task.inputs["reference"])
+        card = WritingFacts.model_validate(task.inputs["facts"])
+        teardown = WritingAnalysis.model_validate(task.inputs["analysis"])
+        text = validate_draft(parsed_draft, source, card, teardown)
         content = {
             "draft": parsed_draft.model_dump(mode="json"),
             "text": text,
             "shape_check": task.result["shape_check"],
         }
-    return document_response(
-        create_document(
+    row = create_document(
+        session,
+        workspace,
+        task.project_id,
+        body.request_id,
+        kind,
+        content,
+        assistance_task_id=task.id,
+        **parents,
+    )
+    result = document_response(row)
+    if kind == "draft":
+        entry = library.ingest_draft(
             session,
             workspace,
-            task.project_id,
-            body.request_id,
-            kind,
-            content,
-            assistance_task_id=task.id,
-            **parents,
+            row,
+            source=library_source,
+            dedupe_key=library_key or f"manual:{task.id}",
+            platform=str(task.inputs.get("publish_platform") or ""),
         )
-    )
+        result["library_entry_id"] = entry.id
+    return result
 
 
 def revision_basis(
@@ -762,30 +889,30 @@ def revise_draft(
             "VIDEO_WRITING_SHAPE_INVALID",
             "修订未通过原逐句结构检查，请核对句数和对应原句。",
         )
-    return document_response(
-        create_document(
-            session,
-            workspace,
-            parent.project_id,
-            body.request_id,
-            "draft",
-            {
-                "draft": draft.model_dump(mode="json"),
-                "text": text,
-                "shape_check": check,
-                "revision": {
-                    "parent_document_id": parent.id,
-                    "parent_document_sha256": parent.body_sha256,
-                    "document_hashes": basis["document_hashes"],
-                    "source_replacements": [
-                        row.model_dump(mode="json") for row in replacements
-                    ],
-                    **budget,
-                },
+    revised = create_document(
+        session,
+        workspace,
+        parent.project_id,
+        body.request_id,
+        "draft",
+        {
+            "draft": draft.model_dump(mode="json"),
+            "text": text,
+            "shape_check": check,
+            "revision": {
+                "parent_document_id": parent.id,
+                "parent_document_sha256": parent.body_sha256,
+                "document_hashes": basis["document_hashes"],
+                "source_replacements": [
+                    row.model_dump(mode="json") for row in replacements
+                ],
+                **budget,
             },
-            **{kind + "_document_id": source.id for kind, source in sources.items()},
-        )
+        },
+        **{kind + "_document_id": source.id for kind, source in sources.items()},
     )
+    library.follow_revision(session, workspace, parent.id, revised)
+    return document_response(revised)
 
 
 @router.post(
@@ -823,9 +950,15 @@ def apply_draft(
         else WritingDraft
     )
     draft = draft_model.model_validate(stored)
-    if draft.missing_facts or document.body["shape_check"]["verdict"] == "FAIL":
+    # Missing facts are notes once the text holds no gap: the validator already
+    # guarantees every spoken fact is the user's. A placeholder still blocks.
+    if document.body["shape_check"]["verdict"] == "FAIL" or PLACEHOLDER.search(
+        document.body["text"]
+    ):
         raise ApiError(
-            409, "VIDEO_WRITING_REVIEW_REQUIRED", "请先补齐缺失事实并处理结构问题。"
+            409,
+            "VIDEO_WRITING_REVIEW_REQUIRED",
+            "稿子里还有待补的空位或结构问题，请先修改。",
         )
     content = copy.deepcopy(project.content)
     content["draft"].update(name=draft.title, text=document.body["text"], drive="text")

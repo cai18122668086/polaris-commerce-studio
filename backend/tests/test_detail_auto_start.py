@@ -70,7 +70,11 @@ def test_new_website_defaults_to_auto_but_explicit_manual_and_legacy_survive():
     assert not DetailPackConfiguration(**common).auto_start_after_plan
 
 
-def test_refined_confirmation_survives_jsonb_order_and_preserves_old_document(client):
+def test_refined_confirmation_survives_jsonb_order_and_preserves_old_document(
+    client, monkeypatch
+):
+    # Historical xinghe 4.0 精致版 approval documents (new jobs are authored).
+    monkeypatch.setenv("POLARIS_DETAIL_AURORA_AUTHORED", "false")
     job = planned(client, count=1)
     payload = deepcopy(job["plan"]["payload"])
     approval = payload["refined_approval"]

@@ -1,1 +1,17 @@
 .field{padding:0;color:#8a739b;font-size:13px}.field summary{display:flex;align-items:center;gap:8px;cursor:pointer;list-style:none;min-height:28px}.field summary:after{content:"+";margin-left:auto;font-size:16px;color:#a28baf}.field[open] summary:after{content:"−"}.field summary>span{padding:2px 6px;border-radius:4px;background:#eee6f6;color:#8a659e;font-size:11px}.field label{display:grid;gap:8px;margin-top:9px}.field label>span{font-size:12px;color:#9c86ab}.field input{min-height:42px;width:100%;padding:10px 12px;border:1px solid #e2d7ec;border-radius:7px;background:#fff;color:#674b7a;font:inherit;font-size:14px;letter-spacing:.7px}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .field{color:#8c857d}
+:global(.theme-ember) .field summary:after{color:#726d65}
+:global(.theme-ember) .field summary>span{background:rgb(255 250 244 / 0.06);color:#958f88}
+:global(.theme-ember) .field label>span{color:#78726a}
+:global(.theme-ember) .field input{border:1px solid #2d2b28;background:rgb(255 250 244 / 0.04);color:#bab6b1;border-radius:9px}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .field{color:#7b786f}
+:global(.theme-plaster) .field summary:after{color:#918e86}
+:global(.theme-plaster) .field summary>span{background:#e5e4e2;color:#1a1a19}
+:global(.theme-plaster) .field label>span{color:#8c8980}
+:global(.theme-plaster) .field input{border:1px solid #d5d4d0;background:#ffffff;color:#1a1a19;border-radius:9px}
+/* plaster:end */

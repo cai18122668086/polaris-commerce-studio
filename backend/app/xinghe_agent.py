@@ -11,12 +11,14 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import contextlib
 import hashlib
 import json
 import logging
 import math
 import re
 import secrets
+import threading
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import AsyncExitStack
@@ -36,7 +38,14 @@ from redis.exceptions import RedisError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
-from . import detail_fast, detail_fast_runtime, refined_detail
+from . import (
+    aurora_detail_authored,
+    aurora_main_image_authored,
+    detail_fast,
+    detail_fast_runtime,
+    label_fidelity,
+    refined_detail,
+)
 from .aurora_detail_runtime import (
     AuroraDetailHarnessError,
     AuroraDetailHarnessRunner,
@@ -243,7 +252,8 @@ _AURORA_V20_MATERIAL_CHECKS = frozenset(
 PLANNER_DIAGNOSTICS_SCHEMA = "xinghe-planner-diagnostics"
 _BOUNDED_JSON_PLANNER_PROFILES = frozenset({
     "replica_native_contract", "replica_exact_compact",
-    refined_detail.PROFILE, detail_fast.PROFILE, "amazon_visual_suite",
+    refined_detail.PROFILE, detail_fast.PROFILE, aurora_detail_authored.PROFILE,
+    "amazon_visual_suite",
 })
 IMAGE_SIZE = "1024x1536"
 SUPPORTED_IMAGE_SIZES = frozenset(
@@ -401,8 +411,13 @@ _AURORA_PLANNER_PROTOCOL_FILES = (
     # requires a non-empty forbidden_visual_details policy on every module.
     "references/commercial-aversion-control.md",
 )
+# Detail Skills whose pages pass the product-label fidelity gate.  The
+# cross-border id is spelled out to avoid importing its adapter here.
+_LABEL_GATED_DETAIL_SKILL_IDS = frozenset(
+    {refined_detail.SKILL_ID, "xinghe-crossborder-detail-3"}
+)
 _DOMESTIC_DETAIL_SKILL_IDS = frozenset(
-    {"xinghe-ecommerce-detail-domestic-3", _AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID, detail_fast.SKILL_ID}
+    {"xinghe-ecommerce-detail-domestic-3", _AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID, detail_fast.SKILL_ID, aurora_detail_authored.SKILL_ID}
 )
 _PLANNER_PROTOCOL_FILES_BY_SKILL = {
     "xinghe-crossborder-detail-3": _CROSSBORDER_PLANNER_PROTOCOL_FILES,
@@ -1836,6 +1851,8 @@ def load_planner_system_prompt(
     try:
         if skill_id == detail_fast.SKILL_ID:
             protocol_files = detail_fast.PROTOCOL_FILES
+        elif skill_id == aurora_detail_authored.SKILL_ID:
+            protocol_files = aurora_detail_authored.PROTOCOL_FILES
         elif skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID:
             protocol_files = _AURORA_PLANNER_PROTOCOL_FILES
         elif skill_id in _COMPLETE_REFERENCE_PROTOCOL_SKILLS:
@@ -2125,6 +2142,154 @@ class _ProviderRoute:
     image_model: str
 
 
+# Review-style planner profiles whose observed latency is 20-140 s.  A route
+# that has not answered within this cap is treated as hung and the call fails
+# over instead of holding the page for the full planner budget.
+AURORA_REVIEW_PLANNER_PROFILES = frozenset(
+    {
+        "aurora_v20_visual_audit",
+        "aurora_style_calibration",
+        "aurora_set_audit",
+        "aurora_repair_identity_check",
+        *label_fidelity.PROFILES,
+    }
+)
+
+
+class _BreakerStore(Protocol):
+    def incr(self, name: str) -> Any: ...
+    def expire(self, name: str, time: int) -> Any: ...
+    def set(self, name: str, value: str, ex: int | None = None) -> Any: ...
+    def exists(self, *names: str) -> Any: ...
+    def delete(self, *names: str) -> Any: ...
+
+
+class PlannerRouteCircuitBreaker:
+    """Park a planner route that keeps failing without a usable response.
+
+    Connection-level failures (refused, DNS, socket timeout, call deadline)
+    and upstream gateway errors (HTTP 502/503/504) count; any other HTTP
+    response closes the circuit again.  While a route is parked the gateway
+    goes straight to the next configured route.  After the cool-down one
+    probe call is allowed; a further failure parks it again.
+
+    State lives in Redis (shared by every worker process, with TTLs) when a
+    store is configured, and falls back to process memory otherwise or when
+    Redis is unavailable.
+    """
+
+    _PREFIX = "polaris:planner-route-breaker:"
+
+    def __init__(self, threshold: int = 2, cooldown_seconds: float = 300) -> None:
+        self.threshold = threshold
+        self.cooldown_seconds = cooldown_seconds
+        self._lock = threading.Lock()
+        self._failures: dict[str, int] = {}
+        self._open_until: dict[str, float] = {}
+        self._store: _BreakerStore | None = None
+
+    def configure_store(self, store: _BreakerStore | None) -> None:
+        self._store = store
+
+    def configure_redis(self, url: str) -> None:
+        if not url.startswith(("redis://", "rediss://")):
+            return
+        from redis import Redis
+
+        self._store = Redis.from_url(
+            url, socket_timeout=0.5, socket_connect_timeout=0.5
+        )
+
+    @staticmethod
+    def _key(route: _ProviderRoute) -> str:
+        return hashlib.sha256(
+            (route.planner_base_url + "\0" + route.planner_api_key).encode()
+        ).hexdigest()
+
+    def is_open(self, route: _ProviderRoute) -> bool:
+        key = self._key(route)
+        if self._store is not None:
+            try:
+                return bool(self._store.exists(self._PREFIX + key + ":open"))
+            except (RedisError, OSError):
+                pass
+        with self._lock:
+            until = self._open_until.get(key)
+            return until is not None and time.monotonic() < until
+
+    def record_failure(self, route: _ProviderRoute) -> None:
+        key = self._key(route)
+        ttl = max(1, int(self.cooldown_seconds))
+        if self._store is not None:
+            try:
+                failures = int(self._store.incr(self._PREFIX + key + ":failures"))
+                self._store.expire(self._PREFIX + key + ":failures", ttl)
+                if failures >= self.threshold:
+                    self._store.set(self._PREFIX + key + ":open", "1", ex=ttl)
+                return
+            except (RedisError, OSError, TypeError, ValueError):
+                pass
+        with self._lock:
+            failures = self._failures.get(key, 0) + 1
+            self._failures[key] = failures
+            if failures >= self.threshold:
+                self._open_until[key] = time.monotonic() + self.cooldown_seconds
+
+    def record_success(self, route: _ProviderRoute) -> None:
+        key = self._key(route)
+        if self._store is not None:
+            with contextlib.suppress(RedisError, OSError):
+                self._store.delete(
+                    self._PREFIX + key + ":failures", self._PREFIX + key + ":open"
+                )
+        with self._lock:
+            self._failures.pop(key, None)
+            self._open_until.pop(key, None)
+
+    def reset(self) -> None:
+        self._store = None
+        with self._lock:
+            self._failures.clear()
+            self._open_until.clear()
+
+
+_PARKING_HTTP_STATUSES = frozenset({502, 503, 504})
+_PLANNER_DEADLINE_GRACE_SECONDS = 5.0
+
+
+async def _within_call_deadline(
+    call: Any, timeout_seconds: float
+) -> tuple[int, dict[str, Any]]:
+    """Bound one planner HTTP call by a true total deadline.
+
+    The socket timeout bounds each blocking read, so a slowly streaming or
+    stalled reply could exceed the budget.  The worker thread may finish in
+    the background, but the page fails over at the deadline.
+    """
+
+    try:
+        result: tuple[int, dict[str, Any]] = await asyncio.wait_for(
+            call, timeout=timeout_seconds + _PLANNER_DEADLINE_GRACE_SECONDS
+        )
+    except TimeoutError as exc:
+        raise XingheAgentError(
+            "PROVIDER_TRANSPORT_FAILED",
+            "Provider call exceeded its total deadline.",
+            retryable=True,
+        ) from exc
+    return result
+
+
+PLANNER_ROUTE_BREAKER = PlannerRouteCircuitBreaker()
+
+# Planning profiles owned by the main-image six-page workflow.  Only these may
+# use POLARIS_MAIN_IMAGE_PLANNER_MODEL; detail, replica, Amazon and every other
+# caller keep the shared analysis/failover models.
+MAIN_IMAGE_PLANNER_PROFILES = frozenset(
+    {"aurora_main_image_authored", "aurora_native_fast_identity"}
+)
+
+
 class UrllibOpenAITransport:
     """Small dependency-free OpenAI-compatible JSON/multipart transport."""
 
@@ -2183,6 +2348,7 @@ class UrllibOpenAITransport:
     ) -> tuple[int, dict[str, Any]]:
         request = Request(url, data=body, headers=dict(headers), method="POST")
         error_status = False
+        started = time.monotonic()
         try:
             with cls._open(request, timeout_seconds) as response:
                 status = int(response.status)
@@ -2192,7 +2358,12 @@ class UrllibOpenAITransport:
                     from .planner_streaming import PlannerStreamError, read_chat_stream
 
                     try:
-                        streamed = read_chat_stream(response, timeout_seconds)
+                        # The stream deadline counts from the request start,
+                        # so header wait plus streaming stay within one budget.
+                        streamed = read_chat_stream(
+                            response,
+                            max(0.0, timeout_seconds - (time.monotonic() - started)),
+                        )
                     except PlannerStreamError as exc:
                         failure = XingheAgentError(exc.code, str(exc), retryable=True)
                         failure.planner_response = exc.envelope
@@ -2280,6 +2451,8 @@ class TengliOpenAICompatibleGateway:
         failover_base_url: str | None = None,
         failover_model: str | None = None,
         failover_image_model: str | None = None,
+        main_image_planner_model: str | None = None,
+        main_image_failover_planner_model: str | None = None,
         image_failover_api_key: str | None = None,
         image_failover_base_url: str | None = None,
         image_failover_model: str | None = None,
@@ -2290,6 +2463,7 @@ class TengliOpenAICompatibleGateway:
         planner_transient_retries: int = 1,
         planner_retry_backoff_seconds: float = 2,
         planner_primary_timeout_seconds: float = 300,
+        planner_review_timeout_seconds: float | None = None,
         planner_receipt_root: Path | None = None,
         transport: OpenAICompatibleTransport | None = None,
     ) -> None:
@@ -2327,6 +2501,7 @@ class TengliOpenAICompatibleGateway:
         self.planner_transient_retries = min(1, max(0, planner_transient_retries))
         self.planner_retry_backoff_seconds = planner_retry_backoff_seconds
         self.planner_primary_timeout_seconds = planner_primary_timeout_seconds
+        self.planner_review_timeout_seconds = planner_review_timeout_seconds
         self.planner_receipt_root = planner_receipt_root
         self.diagnostic_content_sample = diagnostic_content_sample
         self.transport = transport or UrllibOpenAITransport()
@@ -2372,6 +2547,10 @@ class TengliOpenAICompatibleGateway:
                     image_base_url=self._image_base_url,
                     image_model=self.image_model,
                 )
+        self._main_image_planner_model = (main_image_planner_model or "").strip()
+        self._main_image_failover_planner_model = (
+            main_image_failover_planner_model or ""
+        ).strip()
         self._image_failover_route: _ProviderRoute | None = None
         self._image_failover_queue = image_failover_queue
         if image_failover_api_key:
@@ -2423,6 +2602,18 @@ class TengliOpenAICompatibleGateway:
     @property
     def visual_review_route_count(self) -> int:
         return min(4, len(self._ordered_routes()))
+
+    def _planner_model_for(
+        self, request: PlannerRequest, route: _ProviderRoute
+    ) -> str:
+        """Main-image planning may use its own model; all else is unchanged."""
+
+        if request.planning_profile in MAIN_IMAGE_PLANNER_PROFILES:
+            if route.name != "primary" and self._main_image_failover_planner_model:
+                return self._main_image_failover_planner_model
+            if self._main_image_planner_model:
+                return self._main_image_planner_model
+        return route.planner_model
 
     @staticmethod
     def _should_failover_status(status: int) -> bool:
@@ -2542,14 +2733,14 @@ class TengliOpenAICompatibleGateway:
                 }
             )
             encoded = base64.b64encode(source.payload).decode("ascii")
-            content.append(
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{source.content_type};base64,{encoded}"
-                    },
-                }
-            )
+            image_url: dict[str, Any] = {
+                "url": f"data:{source.content_type};base64,{encoded}"
+            }
+            if request.planning_profile in label_fidelity.PROFILES:
+                # Fine print is the point of the label gate: never let the
+                # endpoint fall back to a low-detail downsample.
+                image_url["detail"] = "high"
+            content.append({"type": "image_url", "image_url": image_url})
         payload: dict[str, Any] = {
             "model": self.planner_model,
             "messages": [
@@ -2562,9 +2753,11 @@ class TengliOpenAICompatibleGateway:
             payload.update(stream=True, stream_options={"include_usage": True})
         if request.planning_profile in {"replica_fast_suite", "aurora_native_fast_identity"}:
             payload["max_completion_tokens"] = 16000
+        if request.planning_profile == aurora_main_image_authored.PROFILE:
+            payload["max_completion_tokens"] = 20000
         if request.planning_profile in {"replica_native_contract", "replica_exact_compact"}:
             payload.update({"max_completion_tokens": 16000})
-        elif request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}:
+        elif request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE, aurora_detail_authored.PROFILE}:
             payload.update({"max_completion_tokens": 24000})
         elif request.planning_profile == "amazon_visual_suite_fast":
             payload.update({"max_completion_tokens": 32768})
@@ -2576,6 +2769,12 @@ class TengliOpenAICompatibleGateway:
             )
         elif request.planning_profile == "aurora_detail_revision_scope":
             payload.update({"max_completion_tokens": 4096})
+        elif request.planning_profile == "aurora_repair_identity_check":
+            payload.update({"max_completion_tokens": 3000})
+        elif request.planning_profile in label_fidelity.PROFILES:
+            payload.update(
+                {"max_completion_tokens": label_fidelity.MAX_COMPLETION_TOKENS}
+            )
         elif request.planning_profile == "aurora_v20_visual_audit":
             payload.update(
                 {
@@ -2608,20 +2807,25 @@ class TengliOpenAICompatibleGateway:
                 routes = routes[:1]
             last_route_index = len(routes) - 1
             for route_index, route in enumerate(routes):
-                route_payload = {**payload, "model": route.planner_model}
+                if route_index < last_route_index and PLANNER_ROUTE_BREAKER.is_open(
+                    route
+                ):
+                    continue
+                effective_model = self._planner_model_for(request, route)
+                route_payload = {**payload, "model": effective_model}
                 planner_key = request.idempotency_key
                 if (request.planning_profile == "aurora_native_fast_identity"
-                    and route.planner_model.casefold().startswith("deepseek")):
+                    and effective_model.casefold().startswith("deepseek")):
                     route_payload["max_completion_tokens"] = 32768
                     route_payload["response_format"] = {"type": "json_object"}
                 if (request.planning_profile in {"replica_fast_suite"}
-                    and route.planner_model.casefold().startswith("deepseek")):
+                    and effective_model.casefold().startswith("deepseek")):
                     route_payload["max_completion_tokens"] = 32768
                     route_payload["reasoning_effort"] = "low"
                 if (
                     request.planning_profile
                     in _BOUNDED_JSON_PLANNER_PROFILES | {"amazon_visual_suite_fast"}
-                    and route.planner_model.casefold().startswith("deepseek")
+                    and effective_model.casefold().startswith("deepseek")
                 ):
                     # This provider includes reasoning in the output allowance.
                     # Keep the complete schema and thinking mode. Bound its
@@ -2663,6 +2867,14 @@ class TengliOpenAICompatibleGateway:
                         if self.planner_timeout_seconds is None
                         else self.planner_timeout_seconds
                     )
+                    if (
+                        self.planner_review_timeout_seconds is not None
+                        and request.planning_profile
+                        in AURORA_REVIEW_PLANNER_PROFILES
+                    ):
+                        timeout_seconds = min(
+                            timeout_seconds, self.planner_review_timeout_seconds
+                        )
                     if request.planning_deadline is not None:
                         remaining = request.planning_deadline - time.monotonic()
                         if remaining <= 0:
@@ -2684,12 +2896,12 @@ class TengliOpenAICompatibleGateway:
                         NativeUrllibOpenAITransport()
                         if (
                             request.planning_profile in NATIVE_PLANNER_PROFILES
-                            or request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}
+                            or request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE, aurora_detail_authored.PROFILE}
                         )
                         and type(self.transport) is UrllibOpenAITransport
                         else self.transport
                     )
-                    status, response = await transport.post_json(
+                    post = transport.post_json(
                         url=urljoin(route.planner_base_url, "v1/chat/completions"),
                         headers=self._headers(
                             planner_key, route.planner_api_key
@@ -2697,6 +2909,16 @@ class TengliOpenAICompatibleGateway:
                         payload=route_payload,
                         timeout_seconds=timeout_seconds,
                     )
+                    if request.planning_profile in AURORA_REVIEW_PLANNER_PROFILES:
+                        status, response = await _within_call_deadline(
+                            post, timeout_seconds
+                        )
+                    else:
+                        status, response = await post
+                    if status in _PARKING_HTTP_STATUSES:
+                        PLANNER_ROUTE_BREAKER.record_failure(route)
+                    else:
+                        PLANNER_ROUTE_BREAKER.record_success(route)
                     if native_state is not None:
                         native_state["response_received"] = True
                         native_state["http_status"] = status
@@ -2706,6 +2928,8 @@ class TengliOpenAICompatibleGateway:
                             else None
                         )
                 except XingheAgentError as exc:
+                    if exc.code == "PROVIDER_TRANSPORT_FAILED":
+                        PLANNER_ROUTE_BREAKER.record_failure(route)
                     if (
                         exc.retryable or exc.code == "PROVIDER_RESPONSE_INVALID"
                     ) and route_index < last_route_index:
@@ -2730,7 +2954,7 @@ class TengliOpenAICompatibleGateway:
                 native_error = {}
                 if (
                     request.planning_profile in NATIVE_PLANNER_PROFILES
-                    or request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}
+                    or request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE, aurora_detail_authored.PROFILE}
                 ) and isinstance(response, Mapping):
                     native_error = safe_native_provider_error(
                         response, (route.planner_api_key, self._api_key, self._planner_api_key, self._image_api_key),
@@ -3650,6 +3874,10 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         failover_base_url=settings.provider_failover_base_url,
         failover_model=settings.provider_failover_model,
         failover_image_model=settings.provider_failover_image_model,
+        main_image_planner_model=settings.main_image_planner_model.strip() or None,
+        main_image_failover_planner_model=(
+            settings.main_image_failover_planner_model.strip() or None
+        ),
         image_failover_api_key=(
             settings.tengli_api_key.get_secret_value()
             if settings.replica_image_failover_enabled else None
@@ -3672,8 +3900,10 @@ def build_tengli_gateway(settings: Settings) -> TengliOpenAICompatibleGateway:
         planner_transient_retries=settings.planner_transient_retries,
         planner_retry_backoff_seconds=settings.planner_retry_backoff_seconds,
         planner_primary_timeout_seconds=settings.planner_primary_timeout_seconds,
+        planner_review_timeout_seconds=settings.planner_review_timeout_seconds,
         planner_receipt_root=settings.aurora_work_root / "planner-transport",
     )
+    PLANNER_ROUTE_BREAKER.configure_redis(settings.celery_broker_url)
     from .image_capacity import limit_gateway
 
     return limit_gateway(gateway, settings.celery_broker_url, settings.image_global_concurrency)
@@ -3723,7 +3953,7 @@ class XinghePlanningCoordinator:
                         system_prompt
                         + (
                             ""
-                            if self.skill_id in {_AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID, detail_fast.SKILL_ID}
+                            if self.skill_id in {_AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID, detail_fast.SKILL_ID, aurora_detail_authored.SKILL_ID}
                             else _auto_identity_resolution_system_prompt(request)
                         )
                     ),
@@ -3798,6 +4028,31 @@ class XinghePlanningCoordinator:
                 supplemental_results=(*result.supplemental_results, *intake_calls),
             )
             results.append(result)
+            if (
+                result.error_code is None
+                and detail_fast_runtime.independent_skill(self.skill_id)
+                and _empty_screen_plan(result.payload)
+            ):
+                # A relay route occasionally returns the analysis with an empty
+                # screen list. Re-plan once before failing the job.
+                retry_started = time.perf_counter()
+                try:
+                    result = await self.gateway.plan(request)
+                except Exception as exc:
+                    result = PlannerCallResult(
+                        payload=None,
+                        provider_request_id=None,
+                        raw_usage=None,
+                        normalized_usage=normalize_usage(None),
+                        api_latency_seconds=time.perf_counter() - retry_started,
+                        actual_cost_micros=None,
+                        error_code="PLANNER_PROVIDER_FAILED",
+                        error_message=(
+                            f"Planner provider failed ({type(exc).__name__})."
+                        ),
+                    )
+                result = _with_planner_observability(result)
+                results.append(result)
             if result.error_code is not None:
                 return self._fail_planning(
                     job_id,
@@ -3841,8 +4096,8 @@ class XinghePlanningCoordinator:
                         structured = _bounded_protocol_mapping(result.payload, path="/")
                         structured = detail_fast_runtime.skill_contract(self.skill_id).normalize_strategy(structured)
                         detail_fast_runtime.skill_contract(self.skill_id).validate_strategy(structured, request.page_count)
-                        if self.skill_id == detail_fast.SKILL_ID:
-                            detail_fast.validate_source_selection(
+                        if detail_fast_runtime.fast_style_skill(self.skill_id):
+                            detail_fast_runtime.skill_contract(self.skill_id).validate_source_selection(
                                 structured, tuple(source.source_role for source in request.sources)
                             )
                         validated.append(structured)
@@ -5242,7 +5497,7 @@ class XinghePlanningCoordinator:
                     if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
                     else identity_directives,
                     intake_settings=dict(settings)
-                    if self.skill_id in {_AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID, detail_fast.SKILL_ID}
+                    if self.skill_id in {_AURORA_DOMESTIC_DETAIL_SKILL_ID, refined_detail.SKILL_ID, detail_fast.SKILL_ID, aurora_detail_authored.SKILL_ID}
                     else None,
                     intake_resolution=configuration.get(
                         "domestic_detail_intake_resolution"
@@ -6098,16 +6353,17 @@ class XinghePlanningCoordinator:
                 },
             }
             if detail_fast_runtime.independent_skill(self.skill_id):
-                if self.skill_id == detail_fast.SKILL_ID:
+                if detail_fast_runtime.fast_style_skill(self.skill_id):
+                    fast_contract = detail_fast_runtime.skill_contract(self.skill_id)
                     payload["detail_fast"] = {
-                        "version": detail_fast.PIPELINE_VERSION,
-                        "skill_id": detail_fast.SKILL_ID,
+                        "version": fast_contract.PIPELINE_VERSION,
+                        "skill_id": fast_contract.SKILL_ID,
                         "skill_content_hash": SkillManifestRegistry.bundled().verify_source(
                             self.skill_id, self.skill_root
                         ),
                         "validation_status": "STRUCTURALLY_VALIDATED",
                         "review_status": "NOT_REVIEWED",
-                        "concurrency_limit": detail_fast.CONCURRENCY,
+                        "concurrency_limit": fast_contract.CONCURRENCY,
                     }
                 payload["refined_approval"] = {
                     "version": "xinghe-detail-4-approval-v1",
@@ -6466,6 +6722,13 @@ class XingheImageProvider:
             if self.skill_id == _AURORA_DOMESTIC_DETAIL_SKILL_ID
             else None
         )
+        # The offline gateway keeps its historical call counts; real routes
+        # always pass through the label gate (see label_fidelity).
+        self.label_gate_enabled = (
+            skill_id in _LABEL_GATED_DETAIL_SKILL_IDS
+            and gateway.provider_name != "mock"
+            and label_fidelity.gate_enabled()
+        )
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         try:
@@ -6747,6 +7010,16 @@ class XingheImageProvider:
             finally:
                 async with self._activity_lock:
                     self._active_requests -= 1
+        if (
+            self.label_gate_enabled
+            and not pair_mode
+            and result.outcome == ProviderOutcome.SUCCEEDED
+            and result.artifact is not None
+        ):
+            result = await self._label_fidelity_gate(
+                request, image_request, sources, result
+            )
+            finished_at = datetime.now(UTC)
         known_provider_failure = result.outcome == ProviderOutcome.FAILED
         if (
             pair_mode
@@ -6943,6 +7216,175 @@ class XingheImageProvider:
             model_name=self.gateway.image_model,
             pricing_version=self.gateway.pricing_version,
         )
+
+    async def _label_fidelity_gate(
+        self,
+        request: ProviderRequest,
+        image_request: ImageEditRequest,
+        sources: tuple[SourceImage, ...],
+        result: ImageCallResult,
+    ) -> ImageCallResult:
+        """Char-exact product-label check with at most one targeted repair.
+
+        Never fails the page: a gate error delivers the generated page with an
+        UNCHECKED record, and a label that is still wrong after the single
+        repair is delivered (better candidate) with a disclosed residual.
+        """
+
+        original = result.artifact
+        assert original is not None
+        account = label_fidelity.GateAccount()
+        gate = label_fidelity.LabelFidelityGate(self.gateway)
+        references = tuple(
+            source
+            for source in sources
+            if source.source_role == "product_reference" and source.payload
+        )
+        record: dict[str, Any] = {
+            "gate_version": label_fidelity.GATE_VERSION,
+            "status": "UNCHECKED",
+        }
+        delivered = original
+        image_requests = 0
+        image_cost = 0
+        try:
+            lines = await gate.reference_lines(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                idempotency_key=request.job_id,
+                references=references,
+                account=account,
+            )
+            if not lines:
+                record["reason"] = (
+                    "reference_unavailable" if lines is None else "reference_has_no_label_text"
+                )
+            else:
+                record["reference_lines"] = list(lines)
+                verdict, reading = await gate.check(
+                    workspace_id=request.workspace_id,
+                    job_id=request.job_id,
+                    idempotency_key=image_request.idempotency_key,
+                    payload=original.payload,
+                    reference_lines=lines,
+                    account=account,
+                )
+                record["generated"] = {**verdict.as_record(), "reading": reading}
+                record["status"] = verdict.status
+                if verdict.status == "MISMATCH":
+                    repaired_result = await self._label_repair(
+                        image_request, references, original, lines, verdict
+                    )
+                    image_requests += 1
+                    image_cost += int(repaired_result.actual_cost_micros or 0)
+                    repaired = repaired_result.artifact
+                    if (
+                        repaired_result.outcome == ProviderOutcome.SUCCEEDED
+                        and repaired is not None
+                        and (repaired.width, repaired.height)
+                        == (original.width, original.height)
+                    ):
+                        second, second_reading = await gate.check(
+                            workspace_id=request.workspace_id,
+                            job_id=request.job_id,
+                            idempotency_key=image_request.idempotency_key + ":label-repair",
+                            payload=repaired.payload,
+                            reference_lines=lines,
+                            account=account,
+                        )
+                        record["repaired"] = {
+                            **second.as_record(),
+                            "reading": second_reading,
+                            "image_sha256": repaired.sha256,
+                        }
+                        if second.status == "PASS" or (
+                            second.status == "MISMATCH"
+                            and second.mismatch_count < verdict.mismatch_count
+                        ):
+                            delivered = repaired
+                            verdict = second
+                    else:
+                        record["repaired"] = {
+                            "status": "REPAIR_UNAVAILABLE",
+                            "error_code": repaired_result.error_code,
+                        }
+                    if verdict.status == "PASS":
+                        record["status"] = "REPAIRED"
+                    else:
+                        record["status"] = "RESIDUAL"
+                        record["residual"] = label_fidelity.residual_summary(verdict)
+                    record["delivered"] = (
+                        "label_repair" if delivered is not original else "generated"
+                    )
+        except Exception as exc:  # the gate must never lose a paid page
+            logger.warning(
+                "label fidelity gate skipped job=%s (%s)",
+                request.job_id,
+                type(exc).__name__,
+            )
+            record["status"] = "UNCHECKED"
+            record["reason"] = f"gate_error:{type(exc).__name__}"
+        record["vision_calls"] = account.calls
+        record["image_calls"] = image_requests
+        raw_usage = dict(result.raw_usage or {})
+        base_requests = raw_usage.get("network_requests", 1)
+        if type(base_requests) is not int or base_requests < 0:
+            base_requests = 1
+        raw_usage["network_requests"] = (
+            base_requests + account.requests + image_requests
+        )
+        metrics = raw_usage.get("metrics")
+        raw_usage["metrics"] = {
+            **(dict(metrics) if isinstance(metrics, Mapping) else {}),
+            "label_fidelity": record,
+        }
+        cost = result.actual_cost_micros
+        if cost is not None:
+            cost += account.cost_micros + image_cost
+        return replace(
+            result,
+            artifact=delivered,
+            raw_usage=raw_usage,
+            actual_cost_micros=cost,
+        )
+
+    async def _label_repair(
+        self,
+        image_request: ImageEditRequest,
+        references: tuple[SourceImage, ...],
+        original: ProviderArtifact,
+        lines: Sequence[str],
+        verdict: label_fidelity.LabelVerdict,
+    ) -> ImageCallResult:
+        canvas = SourceImage(
+            asset_id=f"label-repair-canvas-{original.sha256[:16]}",
+            group_key=image_request.group_key,
+            filename=original.filename,
+            content_type=original.content_type,
+            sha256=original.sha256,
+            payload=original.payload,
+            source_role="label_repair_canvas",
+        )
+        repair_request = replace(
+            image_request,
+            sources=(canvas, *references[:2]),
+            prompt=label_fidelity.repair_instruction(lines, verdict.mismatches),
+            idempotency_key=image_request.idempotency_key + ":label-repair",
+        )
+        async with self._semaphore:
+            try:
+                return await self.gateway.edit(repair_request)
+            except Exception as exc:
+                return ImageCallResult(
+                    outcome=ProviderOutcome.FAILED,
+                    provider_request_id=None,
+                    raw_usage=None,
+                    normalized_usage=normalize_usage(None),
+                    api_latency_seconds=0,
+                    actual_cost_micros=None,
+                    error_code="LABEL_REPAIR_FAILED",
+                    error_message=type(exc).__name__,
+                )
 
     def _generation_scope(
         self, request: ProviderRequest, sources: tuple[SourceImage, ...]
@@ -8949,6 +9391,21 @@ def _provider_rejection(
     )
 
 
+def _empty_screen_plan(payload: object) -> bool:
+    """True when a complete-plan response carries no screens at all."""
+    if not isinstance(payload, Mapping):
+        return False
+    body: Mapping[str, Any] = payload
+    properties = body.get("properties")
+    if set(body) == {"type", "properties"} and isinstance(properties, Mapping):
+        body = properties
+    plan = body.get("plan")
+    if not isinstance(plan, Mapping):
+        return "analysis" in body
+    screens = plan.get("screens")
+    return not isinstance(screens, list) or not screens
+
+
 def _planner_call_results(
     results: Sequence[PlannerCallResult],
 ) -> tuple[PlannerCallResult, ...]:
@@ -9099,6 +9556,14 @@ def _fake_usage(
 
 
 def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile in label_fidelity.PROFILES:
+        return label_fidelity.fake_payload(request.planning_profile)
+    if request.planning_profile == aurora_main_image_authored.PROFILE:
+        return aurora_main_image_authored.fake_strategy(
+            request.product_name, len(request.sources)
+        )
+    if request.planning_profile == aurora_detail_authored.PROFILE:
+        return aurora_detail_authored.fake_strategy(request)
     if request.planning_profile == detail_fast.PROFILE:
         return detail_fast.fake_strategy(_fake_plan(replace(request, planning_profile="detail_pack", domestic_protocol=False)), request)
     if request.planning_profile == refined_detail.PROFILE:
@@ -9188,6 +9653,18 @@ def _fake_plan(request: PlannerRequest) -> dict[str, Any]:
             ],
             "all_material_deficiencies": [],
             "audit_complete": True,
+        }
+    if request.planning_profile == "aurora_repair_identity_check":
+        verdict = {
+            "label_text_seen": "OFFLINE LABEL",
+            "label_exact": True,
+            "identity_intact": True,
+            "evidence": "离线检查：标签文字与参考一致，商品结构未改变。",
+        }
+        return {
+            "reference_label_text": "OFFLINE LABEL",
+            "pre_repair": dict(verdict),
+            "repaired": dict(verdict),
         }
     if request.planning_profile == "aurora_style_calibration":
         return {
@@ -10934,6 +11411,8 @@ def _aurora_structure_zone_counts(structure: Mapping[str, Any]) -> dict[str, int
 
 
 def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
+    if request.planning_profile in label_fidelity.PROFILES:
+        return label_fidelity.response_format(request.planning_profile)
     if request.planning_profile == "crossborder_detail":
         from .crossborder_planning_contract import (
             response_format as crossborder_response_format,
@@ -10957,6 +11436,11 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
         from .remix_fast_contract import response_format as remix_fast_response_format
 
         return remix_fast_response_format(request.planning_profile)
+    if request.planning_profile == aurora_detail_authored.PROFILE:
+        return {"type": "json_schema", "json_schema": {
+            "name": "aurora_detail_v23_plan", "strict": False,
+            "schema": aurora_detail_authored.strategy_schema(request.page_count),
+        }}
     if request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}:
         return {"type": "json_schema", "json_schema": {
             "name": "xinghe_detail_4_plan", "strict": False,
@@ -11059,6 +11543,15 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 "name": request.planning_profile,
                 "strict": False,
                 "schema": schema,
+            },
+        }
+    if request.planning_profile == aurora_main_image_authored.PROFILE:
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "aurora_main_image_authored_plan",
+                "strict": False,
+                "schema": aurora_main_image_authored.strategy_schema(),
             },
         }
     if request.planning_profile == "aurora_identity":
@@ -11220,6 +11713,35 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
                 "schema": schema,
             },
         }
+    if request.planning_profile == "aurora_repair_identity_check":
+        draft = {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "label_text_seen": {"type": "string"},
+                "label_exact": {"type": "boolean"},
+                "identity_intact": {"type": "boolean"},
+                "evidence": {"type": "string"},
+            },
+            "required": ["label_text_seen", "label_exact", "identity_intact", "evidence"],
+        }
+        return {
+            "type": "json_schema",
+            "json_schema": {
+                "name": "aurora_repair_identity_check",
+                "strict": True,
+                "schema": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "reference_label_text": {"type": "string"},
+                        "pre_repair": draft,
+                        "repaired": draft,
+                    },
+                    "required": ["reference_label_text", "pre_repair", "repaired"],
+                },
+            },
+        }
     if request.planning_profile == "amazon_visual_suite_fast":
         from .amazon_suite_fast import planner_json_schema
         return {"type": "json_schema", "json_schema": {"name": "amazon_suite_fast_plan", "strict": True, "schema": planner_json_schema()}}
@@ -11233,6 +11755,19 @@ def _planner_response_format(request: PlannerRequest) -> dict[str, Any]:
             "schema": _amazon_planner_json_schema(),
         },
     }
+
+
+def _aurora_audit_contract_text(product_information: Sequence[str]) -> str:
+    """Return the per-page audit contract exactly as the provider built it.
+
+    The provider serializes one JSON contract into ``product_information``;
+    embed it verbatim rather than re-quoting it as a JSON string.
+    """
+
+    items = [str(item) for item in product_information if str(item).strip()]
+    if len(items) == 1:
+        return items[0]
+    return json.dumps(items, ensure_ascii=False)
 
 
 def _planner_prompt(request: PlannerRequest) -> str:
@@ -11282,6 +11817,8 @@ def _planner_prompt(request: PlannerRequest) -> str:
 
 
 def _planner_prompt_body(request: PlannerRequest) -> str:
+    if request.planning_profile in label_fidelity.PROFILES:
+        return label_fidelity.prompt(request.planning_profile)
     if request.planning_profile == "aurora_native_fast_identity":
         return _planner_prompt_body(replace(request, planning_profile="aurora_identity")) + "\nReturn the complete identity response_schema:\n" + json.dumps(_aurora_identity_json_schema(), ensure_ascii=False)
     if request.planning_profile == "replica_fast_suite":
@@ -11294,6 +11831,8 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
                 + "\n".join(request.product_information))
     if request.planning_profile == "replica_native_contract":
         return "Author the requested native Skill contract from actual attached pixels. JSON only.\n" + "\n".join(request.product_information)
+    if request.planning_profile == aurora_detail_authored.PROFILE:
+        return aurora_detail_authored.planner_prompt(request)
     if request.planning_profile in {refined_detail.PROFILE, detail_fast.PROFILE}:
         return (detail_fast if request.planning_profile == detail_fast.PROFILE else refined_detail).planner_prompt(request)
     if request.planning_profile == "aurora_detail_revision_scope":
@@ -11429,6 +11968,27 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "decision_summary must be a concrete direct-pixel verdict sentence "
             "with at least 12 characters; never use a one-word verdict such as "
             "PASS, 合格 or 通过."
+            "\n\nThe audit contract for this page follows. Its "
+            "authorized_fact_pool is the only claim authority, page_contract is "
+            "the approved plan for this page, and layout_observation_contract "
+            "holds the exact layout tokens to copy.\naudit_contract="
+            + _aurora_audit_contract_text(request.product_information)
+        )
+    if request.planning_profile == "aurora_repair_identity_check":
+        return (
+            "Directly inspect the attached images. All images before the last two "
+            "are original product identity references. The second-to-last image is "
+            "the PRE-REPAIR draft and the last image is the REPAIRED draft of the "
+            "same page. Only the product itself matters here: ignore headlines, "
+            "badges, banners and every other text that is not printed on the "
+            "product or its package. Transcribe the text printed on the product "
+            "label in the references, then on the product in each draft, and "
+            "compare them character by character. label_exact is true only when "
+            "every legible label character matches the references (no changed, "
+            "missing, extra or garbled characters). identity_intact is true only "
+            "when silhouette, proportions, colour partitions and components match "
+            "the references. Return JSON only.\nrepair_check_contract="
+            + _aurora_audit_contract_text(request.product_information)
         )
     if request.planning_profile == "aurora_style_calibration":
         return (
@@ -11448,6 +12008,8 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "Identify whether page 0 alone is visibly the search listing cover and "
             "give concrete pixel evidence explaining why each page 1 through 5 is "
             "not a search cover. Use the exact supplied image hashes."
+            "\nset_audit_contract="
+            + _aurora_audit_contract_text(request.product_information)
         )
     if request.planning_profile == "aurora_visual_audit":
         return (
@@ -11552,6 +12114,26 @@ def _planner_prompt_body(request: PlannerRequest) -> str:
             "Unknown comparisons are null with audit_complete=false and stop processing. "
             "Return JSON only.\n\nproduct_information="
             + json.dumps(list(request.product_information), ensure_ascii=False)
+        )
+    if request.planning_profile == aurora_main_image_authored.PROFILE:
+        settings = request.intake_settings or {}
+        category = next(
+            (
+                value.split("：", 1)[1]
+                for value in request.product_information
+                if value.startswith("商品类目：")
+            ),
+            str(settings.get("category") or "商品"),
+        )
+        return aurora_main_image_authored.planner_prompt(
+            product_name=request.product_name,
+            category=category,
+            facts=[
+                value
+                for value in request.product_information
+                if not value.startswith("商品类目：")
+            ],
+            source_count=len(request.sources),
         )
     if request.planning_profile == "aurora_identity":
         return (

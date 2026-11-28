@@ -1,0 +1,28 @@
+# 对比轮：按 origin/perf/concurrency-50 的 deploy/compose.production.yml 调整（在 staging 总上限内按比例缩小）。
+# 正式值 → staging：api 3 worker 1.5CPU/1g → 3 worker 1.0CPU/768m；postgres 1.5CPU/1.5g max_conn 200 → 0.5CPU/640m max_conn 200；
+# worker 1.0CPU/1.5g 池 2+1 → 0.2CPU/896m 池 2+1。为守住 4.5GB 总上限，video-api/replica-worker/minio/supertokens 各降一点。
+services:
+  postgres:
+    command: ["postgres", "-c", "max_connections=200", "-c", "shared_buffers=128MB", "-c", "work_mem=4MB", "-c", "log_min_duration_statement=500", "-c", "log_lock_waits=on"]
+    mem_limit: 640m
+    cpus: 0.35
+  minio: { mem_limit: 192m }
+  supertokens: { mem_limit: 320m }
+  api:
+    command: ["python", "-m", "stg_boot", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips=*", "--workers", "3"]
+    environment:
+      POLARIS_DATABASE_POOL_SIZE: "8"
+      POLARIS_DATABASE_MAX_OVERFLOW: "8"
+      POLARIS_DATABASE_POOL_TIMEOUT_SECONDS: "10"
+    mem_limit: 768m
+    cpus: 1.00
+  video-api: { mem_limit: 320m, cpus: 0.20 }
+  worker:
+    environment:
+      POLARIS_DATABASE_POOL_SIZE: "2"
+      POLARIS_DATABASE_MAX_OVERFLOW: "1"
+    mem_limit: 896m
+    cpus: 0.20
+  detail-worker: { cpus: 0.15 }
+  replica-worker: { mem_limit: 320m, cpus: 0.10 }
+  dispatcher: { cpus: 0.10 }

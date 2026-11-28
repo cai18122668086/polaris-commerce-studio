@@ -29,14 +29,8 @@ export function AuthBoundary({ children }: { children: React.ReactNode }) {
   const [result, setResult] = useState<BoundaryResult>();
   const [retryKey, setRetryKey] = useState(0);
   const [recovering, setRecovering] = useState(false);
-  // This opt-in is only supplied by an ignored local .env.local file so the help UI can be reviewed without an external auth service.
-  // Production and normal local runs retain the existing route protection because this is false unless explicitly configured.
-  const localHelpPreview = process.env.NEXT_PUBLIC_LOCAL_HELP_PREVIEW === "true" && pathname === "/help";
-  const localHomePreview = process.env.NEXT_PUBLIC_LOCAL_HOME_PREVIEW === "true" && pathname === "/";
-  const localInspirationPreview =
-    process.env.NEXT_PUBLIC_LOCAL_INSPIRATION_PREVIEW === "true" && pathname === "/inspiration";
-  const publicRoute =
-    isPublicRoute(pathname) || localHelpPreview || localHomePreview || localInspirationPreview;
+  // 首页、帮助中心、灵感专区和登录/法律页面对未登录访客公开（见 lib/auth/routes.ts），其余页面需要登录。
+  const publicRoute = isPublicRoute(pathname);
   const developmentAuth = getAuthMode() === "development";
 
   const redirectToLogin = useCallback(() => {

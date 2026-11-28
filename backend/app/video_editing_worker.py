@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, cast
 from uuid import uuid4
 
+from celery.exceptions import SoftTimeLimitExceeded
 from sqlalchemy import delete, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
@@ -18,7 +19,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from .celery_app import celery_app
 from .config import Settings
-from .database import build_database
+from .database import build_database_for
 from .errors import ApiError
 from .motion_library import (
     MOTION_SHA256,
@@ -125,6 +126,39 @@ def asr_profile(settings: Settings, language: str, reference: str | None) -> str
     return hashlib.sha256(json.dumps(payload, sort_keys=True).encode()).hexdigest()
 
 
+# Confirmed-script alignment failures that recognition of the real audio can
+# replace. Disabled alignment and environment/provenance failures (audio or
+# script changed, UTF-8 mode, timeouts, lease loss) still fail the task.
+ALIGNMENT_FALLBACK_CODES = frozenset(
+    {
+        "EDITING_ALIGNMENT_FAILED",
+        "EDITING_ALIGNMENT_TEXT_REQUIRED",
+        "EDITING_ALIGNMENT_TEXT_TIMESTAMPS_MISMATCH",
+        "EDITING_ALIGNMENT_TIMESTAMPS_REQUIRED",
+        "EDITING_ALIGNMENT_SOURCE_MISMATCH",
+        "EDITING_ASR_TIMING_INVALID",
+    }
+)
+_ALIGNMENT_FILES = (
+    "alignment-config.json",
+    "confirmed-script.json",
+    "alignment-input.txt",
+    "alignment-native-input.utf8",
+    "alignment-raw.json",
+    "alignment-receipt.json",
+    "transcript.json",
+)
+
+
+def set_aside_alignment(root: Path) -> None:
+    """Keep the failed alignment for diagnosis, out of the recognition outputs."""
+    kept = root / "alignment-fallback"
+    kept.mkdir(exist_ok=True)
+    for name in _ALIGNMENT_FILES:
+        if (root / name).exists():
+            (root / name).replace(kept / name)
+
+
 def load_transcript(
     task_id: str,
     root: Path,
@@ -141,22 +175,31 @@ def load_transcript(
 
         binding = confirmed_input(snapshot, prepared)
         if binding:
-            previous = snapshot.get("prior_confirmed_transcript")
-            if previous and not snapshot["checkpoint"].get("transcript"):
-                cached_id, cached = previous
+            try:
+                previous = snapshot.get("prior_confirmed_transcript")
+                if previous and not snapshot["checkpoint"].get("transcript"):
+                    cached_id, cached = previous
+                    return load_confirmed(
+                        cached_id,
+                        root,
+                        prepared,
+                        {**snapshot, "checkpoint": {"transcript": cached}},
+                        binding,
+                        settings,
+                        guard,
+                        stage,
+                    )
                 return load_confirmed(
-                    cached_id,
-                    root,
-                    prepared,
-                    {**snapshot, "checkpoint": {"transcript": cached}},
-                    binding,
-                    settings,
-                    guard,
-                    stage,
+                    task_id, root, prepared, snapshot, binding, settings, guard, stage
                 )
-            return load_confirmed(
-                task_id, root, prepared, snapshot, binding, settings, guard, stage
-            )
+            except EditingFailure as failure:
+                if failure.code not in ALIGNMENT_FALLBACK_CODES:
+                    raise
+                # The confirmed script could not be force-aligned to this audio.
+                # Recognize the actual speech instead (the script stays the
+                # recognition reference) rather than failing the whole edit.
+                set_aside_alignment(root)
+                stage("transcribing", alignment_fallback={"code": failure.code})
     # A user reference helps comparison, while confirmed provenance retains its
     # own immutable reference in snapshot["reference"]. Include this choice in
     # the ASR profile so a changed reference cannot reuse an old transcript.
@@ -1199,6 +1242,8 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             )
             else "EDITING_INTERNAL_ERROR"
         )
+        if isinstance(error, SoftTimeLimitExceeded):
+            code = "EDITING_TIME_LIMIT_EXCEEDED"
         status = "cancelled" if code == "EDITING_CANCELLED" else "failed"
         with factory() as session:
             failure_values: dict[str, Any] = {}
@@ -1246,8 +1291,28 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
             if root.is_dir():
                 atomic_json(
                     root / "failure.json",
-                    {"code": code, "exception_type": type(error).__name__},
+                    {
+                        "code": code,
+                        "exception_type": type(error).__name__,
+                        "location": failure_location(error),
+                    },
                 )
+
+
+def failure_location(error: BaseException) -> str | None:
+    """Innermost backend frame of an unexpected failure.
+
+    Returns ``file:line function`` only, never the message or any data.
+    """
+    import traceback
+
+    frames = [
+        f for f in traceback.extract_tb(error.__traceback__) if "/app/" in f.filename
+    ]
+    if not frames:
+        return None
+    frame = frames[-1]
+    return f"{Path(frame.filename).name}:{frame.lineno} {frame.name}"
 
 
 @celery_app.task(
@@ -1255,7 +1320,7 @@ def process(task_id: str, settings: Settings, factory: sessionmaker[Session]) ->
 )
 def process_editing_task(task_id: str) -> None:
     settings = Settings()
-    engine, factory = build_database(settings.database_url)
+    engine, factory = build_database_for(settings)
     try:
         process(task_id, settings, factory)
     finally:

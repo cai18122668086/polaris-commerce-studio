@@ -191,11 +191,11 @@ export function MobileNavigationMenu({
         maxHeight: "calc(100vh - 72px)",
         overflowY: "auto",
         padding: 14,
-        border: "1px solid #e4e7ee",
+        border: "1px solid #23221f",
         borderRadius: "0 0 16px 16px",
-        color: "#151827",
-        background: "#fff",
-        boxShadow: "0 24px 50px rgb(10 20 38 / 22%)",
+        color: "#e9e8e6",
+        background: "#0f0e0d",
+        boxShadow: "0 24px 50px rgb(0 0 0 / 0.396)",
       }}
     >
       <div style={{ display: "grid", gap: 8 }}>
@@ -231,7 +231,7 @@ export function MobileNavigationMenu({
           return (
             <section
               key={menu.key}
-              style={{ border: "1px solid #eceef3", borderRadius: 12, overflow: "hidden" }}
+              style={{ border: "1px solid #1e1c1a", borderRadius: 12, overflow: "hidden" }}
             >
               <div
                 style={{
@@ -245,7 +245,7 @@ export function MobileNavigationMenu({
                 <Link
                   href={menu.href}
                   onClick={onClose}
-                  style={{ flex: 1, color: "#171a27", fontSize: 14, fontWeight: 700 }}
+                  style={{ flex: 1, color: "#e9e8e6", fontSize: 14, fontWeight: 700 }}
                 >
                   {menu.label}
                 </Link>
@@ -261,7 +261,7 @@ export function MobileNavigationMenu({
                     alignSelf: "stretch",
                     placeItems: "center",
                     border: 0,
-                    color: "#596173",
+                    color: "#a09b94",
                     background: "transparent",
                   }}
                 >
@@ -274,14 +274,14 @@ export function MobileNavigationMenu({
               {expanded && (
                 <div
                   id={sectionId}
-                  style={{ display: "grid", gap: 7, padding: 10, background: "#fff" }}
+                  style={{ display: "grid", gap: 7, padding: 10, background: "#0f0e0d" }}
                 >
                   {menu.groups.map((group) => (
                     <div key={group.label} style={{ display: "grid", gap: 6 }}>
                       <strong
                         style={{
                           padding: "4px 3px 1px",
-                          color: "#7a8190",
+                          color: "#868077",
                           fontSize: 11,
                         }}
                       >
@@ -317,7 +317,7 @@ export function MobileNavigationMenu({
                                   <Flame
                                     size={13}
                                     fill="currentColor"
-                                    color="#786490"
+                                    color="#f07a2b"
                                     className="mobile-nav-tool-link__hot"
                                     style={{ position: "absolute", top: 7, right: 7, display: "block" }}
                                     aria-label="热门功能"
@@ -334,7 +334,7 @@ export function MobileNavigationMenu({
                     <Link
                       href={menu.footer.href}
                       onClick={onClose}
-                      style={{ padding: "7px 3px 2px", color: "#52683b", fontSize: 12, fontWeight: 700 }}
+                      style={{ padding: "7px 3px 2px", color: "#a09a93", fontSize: 12, fontWeight: 700 }}
                     >
                       {menu.footer.label}
                     </Link>

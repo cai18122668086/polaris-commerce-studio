@@ -1,7 +1,7 @@
 "use client";
 import { useDraftState } from "@/lib/hooks/use-creation-draft";
 
-import { CreditCostHint } from "@/features/billing/components/credit-account";
+import { FreeEditCost } from "@/components/free-edit-cost";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
@@ -173,7 +173,7 @@ function LocalEditWorkspace() {
                   ].map(([label, value]) => <button key={label} type="button" disabled={busy} aria-pressed={prompt === value} onClick={() => setPrompt(value)}>{label}</button>)}
                 </div>}
               </section>
-              <div className="cost-bar"><span>本次生成</span><CreditCostHint jobType="local_edit" count={1} fallback={<strong>{workflow.mode === "provider" ? "按套餐计费" : workflow.mode === "mock" ? "暂不生成图片" : "生成服务暂不可用"}</strong>} /></div>
+              <div className="cost-bar"><span>本次生成</span><FreeEditCost workspaceId={workspace?.id} assetId={sourceAsset?.id} fallback={<strong>{workflow.mode === "provider" ? "按套餐计费" : workflow.mode === "mock" ? "暂不生成图片" : "生成服务暂不可用"}</strong>} /></div>
               {(requestError || editorError) && <div className="generation-feedback error" role="alert"><span><AlertCircle size={16} /></span><div><strong>请求未完成</strong><p>{editorError ?? errorMessage(requestError ?? new Error("未知错误"))}</p></div></div>}
                 <button className="primary-button generate-button" onClick={() => void submit()} disabled={Boolean(jobId) || !workflowAvailable || !sourceAsset || !hasSelection || !prompt.trim() || busy} aria-busy={busy}>
                   {busy ? <LoaderCircle className="spin" size={17} /> : <Sparkles size={17} />}{busy ? "正在创建任务" : workflow.mode === "provider" ? "开始生成" : workflow.mode === "mock" ? "保存任务" : "服务状态确认中，暂不可创建"}

@@ -28,3 +28,43 @@ td small { margin-top: 5px; color: #85899a; }
 .center { display: grid; justify-items: center; gap: 12px; min-height: 50vh; padding: 80px 20px; text-align: center; color: #666b7c; }
 .center h1 { margin: 0; color: #202236; }
 @media (max-width: 720px) { .page { padding: 28px 18px 50px; } .header, .sectionHeader { flex-direction: column; } .form { grid-template-columns: 1fr; } }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .page{color:#e9e8e6}
+:global(.theme-ember) .eyebrow{color:#97928a;font-weight:500}
+:global(.theme-ember) .header p,:global(.theme-ember) .sectionHeader p,:global(.theme-ember) .center p{color:#867f76}
+:global(.theme-ember) .card{border:1px solid #22201e;background:rgb(255 250 244 / 0.04);box-shadow:0 12px 40px rgb(0 0 0 / 0.09)}
+:global(.theme-ember) .primary{color:#0f0e0d;background:#e6e2db}
+:global(.theme-ember) .secondary,:global(.theme-ember) .action{color:#ada8a3;border:1px solid #272623;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .form{background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .form label{color:#9f9a93}
+:global(.theme-ember) .form input,:global(.theme-ember) .form select{border:1px solid #282623;background:rgb(255 250 244 / 0.04);border-radius:11px}
+:global(.theme-ember) th,:global(.theme-ember) td{border-bottom:1px solid #1b1b19}
+:global(.theme-ember) th{color:#7d766e;font-weight:500}
+:global(.theme-ember) td small{color:#7d766e}
+:global(.theme-ember) .success{color:#a09b94;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .error{color:#fa682a;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .empty{color:#7d766e}
+:global(.theme-ember) .center{color:#9f9992}
+:global(.theme-ember) .center h1{color:#e9e8e6}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{color:#232320}
+:global(.theme-plaster) .eyebrow{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .header p,:global(.theme-plaster) .sectionHeader p,:global(.theme-plaster) .center p{color:#807d74}
+:global(.theme-plaster) .card{border:1px solid #e4e3e1;background:#ffffff;box-shadow:0 12px 40px rgb(30 27 22 / 0.05)}
+:global(.theme-plaster) .primary{color:#ffffff;background:#1a1a19}
+:global(.theme-plaster) .secondary,:global(.theme-plaster) .action{color:#1a1a19;border:1px solid #dbdad7;background:#ffffff}
+:global(.theme-plaster) .form{background:#f1f1f0;border-radius:16px}
+:global(.theme-plaster) .form label{color:#6a6860}
+:global(.theme-plaster) .form input,:global(.theme-plaster) .form select{border:1px solid #dbdad7;background:#ffffff;border-radius:11px}
+:global(.theme-plaster) th,:global(.theme-plaster) td{border-bottom:1px solid #ebeae9}
+:global(.theme-plaster) th{color:#88857c;font-weight:500}
+:global(.theme-plaster) td small{color:#88857c}
+:global(.theme-plaster) .success{color:#18794e;background:#f2f2f1}
+:global(.theme-plaster) .error{color:#b23a0e;background:#eeeeed}
+:global(.theme-plaster) .empty{color:#88857c}
+:global(.theme-plaster) .center{color:#6a6860}
+:global(.theme-plaster) .center h1{color:#232320}
+/* plaster:end */

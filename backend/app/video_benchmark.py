@@ -1,14 +1,18 @@
-"""Normalize one public Douyin search page without storing media URLs."""
+"""Normalize one public search page (抖音/小红书/B站) without exposing media URLs."""
 
 from __future__ import annotations
 
+import logging
 import re
 from collections import Counter
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+from . import video_benchmark_platforms as platforms
 from .errors import ApiError
 from .video_assistance_provider import video_source_url
+
+logger = logging.getLogger(__name__)
 
 BENCHMARK_KIND = "benchmark_search"
 MAX_PAGES = 10
@@ -48,21 +52,70 @@ def posted_at(value: Any) -> str | None:
     return None
 
 
-def candidate(row: dict[str, Any]) -> dict[str, Any] | None:
+def drop_reason(row: Any) -> str | None:
+    """Why a provider row is not a usable short video, or None when it is."""
+    if not isinstance(row, dict):
+        return "not_object"
+    media_type = row.get("media_type")
     post_id = row.get("id")
     if type(post_id) is int:
         post_id = str(post_id)
     if not isinstance(post_id, str) or not re.fullmatch(r"[0-9]{6,25}", post_id):
-        return None
+        return "invalid_id"
     url = VIDEO_PREFIX + post_id
     source_url = row.get("url")
-    if not isinstance(source_url, str):
+    if source_url is not None and not isinstance(source_url, str):
+        return "url_invalid"
+    if source_url and source_url.strip():
+        try:
+            resolved = video_source_url(source_url)
+        except ApiError:
+            return "url_not_video"
+        # A short share link cannot be resolved offline; the numeric id is the
+        # canonical identity. A canonical link for another post is a mismatch.
+        if resolved != url and not resolved.startswith("https://v.douyin.com/"):
+            return "url_id_mismatch"
+    elif media_type != "video":
+        return "missing_url"
+    if media_type not in {"video", None}:
+        return "media_type_" + (
+            re.sub(r"[^a-z0-9_]", "", str(media_type).lower())[:24] or "other"
+        )
+    duration = row.get("duration_sec")
+    if (
+        isinstance(duration, (int, float))
+        and not isinstance(duration, bool)
+        and duration > 300
+    ):
+        return "longer_than_300s"
+    return None
+
+
+def diagnostic_row(row: Any, reason: str) -> dict[str, Any]:
+    """Skipped-row shape for diagnosis; never stores media or page URLs."""
+    if not isinstance(row, dict):
+        return {"reason": reason, "type": type(row).__name__}
+    url = row.get("url")
+    shape = None
+    if isinstance(url, str):
+        shape = re.sub(r"\d{6,}", "<id>", url.split("?", 1)[0])[:120]
+    return {
+        "reason": reason,
+        "keys": sorted(str(key) for key in row)[:40],
+        "id": str(row.get("id"))[:40],
+        "media_type": str(row.get("media_type"))[:40],
+        "url_shape": shape,
+        "duration_sec": row.get("duration_sec")
+        if isinstance(row.get("duration_sec"), (int, float))
+        else None,
+    }
+
+
+def candidate(row: dict[str, Any]) -> dict[str, Any] | None:
+    if drop_reason(row) is not None:
         return None
-    try:
-        if video_source_url(source_url) != url:
-            return None
-    except ApiError:
-        return None
+    post_id = str(row["id"])
+    url = VIDEO_PREFIX + post_id
     duration = row.get("duration_sec")
     duration = (
         duration
@@ -71,8 +124,6 @@ def candidate(row: dict[str, Any]) -> dict[str, Any] | None:
         and duration > 0
         else None
     )
-    if duration is not None and duration > 300:
-        return None
     metrics = {key: count(row.get(key)) for key in METRICS}
     likes = metrics["like_count"]
     collects, shares = metrics["collect_count"], metrics["share_count"]
@@ -100,15 +151,41 @@ def candidate(row: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def page_identity(task_id: str, inputs: dict[str, Any]) -> dict[str, Any]:
+    params = inputs["search_params"]
     return {
         "page": inputs["page"],
         "root_task_id": inputs["root_task_id"] or task_id,
         "previous_task_id": inputs["previous_task_id"],
-        **{
-            key: inputs["search_params"][key]
-            for key in ("keyword", "sort", "publish_time")
-        },
+        "platform": inputs.get("platform", "douyin"),
+        "mode": inputs.get("mode", "search"),
+        "keyword": params["keyword"],
+        "sort": params.get("sort", "most_liked"),
+        "publish_time": params.get("publish_time", "unlimited"),
     }
+
+
+def normalized(
+    platform: str, row: Any, rank: int | None = None
+) -> tuple[dict[str, Any] | None, str | None, str | None]:
+    """(public item, drop reason, server-only media URL) for one supplier row."""
+    reason = (
+        drop_reason(row)
+        if platform == "douyin"
+        else platforms.drop_reason(platform, row)
+    )
+    if reason is not None:
+        return None, reason, None
+    item, media = platforms.candidate(platform, row, rank)
+    if platform == "douyin":
+        legacy = candidate(row)
+        assert legacy is not None
+        item = {
+            **item,
+            **legacy,
+            "title": item["title"],
+            "cover_url": item["cover_url"],
+        }
+    return item, None, media
 
 
 def benchmark_page(
@@ -122,22 +199,38 @@ def benchmark_page(
 
     params, page = inputs["search_params"], inputs["page"]
     seen = set(inputs["seen_ids"])
-    items, original_rows = [], []
+    items: list[dict[str, Any]] = []
+    original_rows: list[dict[str, Any]] = []
+    skipped_rows: list[dict[str, Any]] = []
     duplicates = skipped = 0
-    for row in rows:
-        item = (
-            candidate(row)
-            if isinstance(row, dict) and row.get("media_type") == "video"
-            else None
+    reasons: Counter[str] = Counter()
+    platform = inputs.get("platform", "douyin")
+    media_urls: dict[str, str] = {}
+    for position, row in enumerate(rows):
+        row_platform = (
+            row["platform"]
+            if inputs.get("mode") == "links"
+            and isinstance(row, dict)
+            and row.get("platform") in platforms.PLATFORMS
+            else platform
         )
+        if row_platform not in platforms.PLATFORMS:
+            row_platform = "douyin"
+        item, reason, media = normalized(row_platform, row, position + 1)
         if item is None:
             skipped += 1
+            reason = reason or "invalid"
+            reasons[reason] += 1
+            if len(skipped_rows) < 50:
+                skipped_rows.append(diagnostic_row(row, reason))
             continue
         if item["platform_id"] in seen:
             duplicates += 1
             continue
         seen.add(item["platform_id"])
         items.append(item)
+        if media:
+            media_urls[item["platform_id"]] = media
         original_rows.append(
             {
                 "source_url": item["source_url"],
@@ -146,11 +239,7 @@ def benchmark_page(
                     for key in SOURCE_FIELDS
                     if key in row and (row[key] is None or type(row[key]) in {int, str})
                 },
-                "duration_sec": (
-                    row["duration_sec"]
-                    if item["duration_seconds"] is not None
-                    else None
-                ),
+                "duration_sec": item["duration_seconds"],
             }
         )
 
@@ -163,10 +252,15 @@ def benchmark_page(
         or page >= MAX_PAGES
     ):
         token = None
+    if skipped:
+        logger.warning(
+            "benchmark rows skipped",
+            extra={"task_id": task_id, "skip_reasons": dict(reasons)},
+        )
     authors = Counter(item["author_id"] for item in items if item["author_id"])
     billing = data.get("billing")
     return {
-        "items": items,
+        "items": platforms.by_likes(items),
         **page_identity(task_id, inputs),
         "captured_at": captured_at.isoformat(),
         "has_more": token is not None,
@@ -176,6 +270,7 @@ def benchmark_page(
         "received_count": len(rows),
         "duplicate_count": duplicates,
         "skipped_count": skipped,
+        "skip_reasons": dict(reasons),
         "author_count": len(authors),
         "top_author_item_count": max(authors.values(), default=0),
         "unknown_author_count": sum(not item["author_id"] for item in items),
@@ -188,6 +283,8 @@ def benchmark_page(
             and isinstance(billing.get(key), (bool, int, float, str))
         },
         "original_rows": original_rows,
+        "skipped_rows": skipped_rows,
         "seen_ids": sorted(seen),
         "next_page_token": token,
+        "media_urls": media_urls,
     }

@@ -368,8 +368,8 @@ export const FEATURE_REGISTRY = [
   },
   {
     id: "reference-remix",
-    title: "一键模仿",
-    shortTitle: "一键模仿",
+    title: "一键复刻（单图）",
+    shortTitle: "单图复刻",
     description: "借鉴参考图的构图与光影，替换为自己的商品、品牌和卖点。",
     category: "product_image",
     route: "/workspace/reference-remix",

@@ -2,6 +2,7 @@
 
 import { useId, useState, type ReactNode } from "react";
 import { ChevronDown, FileText } from "lucide-react";
+import Link from "next/link";
 import styles from "./studio-content.module.css";
 
 export function Disclosure({ title, description, meta, icon, children, defaultOpen = false, group }: { title: string; description?: string; meta?: ReactNode; icon?: ReactNode; children: ReactNode; defaultOpen?: boolean; group?: string }) {
@@ -28,4 +29,20 @@ export function MetadataGrid({ items }: { items: { label: string; value: ReactNo
 
 export function Notice({ children, tone = "info" }: { children: ReactNode; tone?: "info" | "warning" }) {
   return <div className={styles.notice} data-tone={tone}>{children}</div>;
+}
+
+/** 余额不足时的充值入口（积分包在账户中心的会员与积分页） */
+export function TopUpLink() {
+  return <Link className={styles.topUpLink} href="/account#membership">充值积分</Link>;
+}
+
+/** 余额不足：计费按钮已停用，说明原因并给出充值入口 */
+export function ShortOfCredits({ credits }: { credits?: number | null }) {
+  return <p className={styles.costLine} data-short role="status">{typeof credits === "number" ? `余额不足，本次需 ${credits} 积分` : "余额不足"} · <TopUpLink /></p>;
+}
+
+/** Price shown beside a paid action; "按实际用量计费" when no price is configured. */
+export function CostLine({ note }: { note?: { text: string; insufficient: boolean } }) {
+  if (!note) return null;
+  return <p className={styles.costLine} data-short={note.insufficient || undefined}>{note.text}{note.insufficient && <> · <TopUpLink /></>}</p>;
 }

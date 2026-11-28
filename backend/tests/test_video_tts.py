@@ -206,13 +206,18 @@ def test_preview_is_cached_authorized_and_does_not_synthesize(video_gen):
     path.write_bytes(b"sample")
     voices = client.get(root + "/voices").json()
     official = [v for v in voices if v["id"] in VOICES]
-    assert len(official) == 327 and not official[0]["available"]
+    # 327 条目录里只展示人工核对过的 204 条（角色化、beta 重复等隐藏）
+    assert len(official) == 204 and not official[0]["available"]
     voice = next(v for v in official if v["id"] == KEY)
-    assert "whisper" not in voice["emotions"]
-    assert client.get(voice["preview_url"]).content == b"sample"
-    assert client.get(voice["preview_url"]).content == b"sample" and not provider.posts
+    # 共享的情绪/语言选项不再逐条返回，由 /voice-options 一次给出
+    assert "emotions" not in voice and "languages" not in voice
+    assert voice["preview"] is True and "preview_url" not in voice
+    assert "whisper" not in client.get(root + "/voice-options").json()["emotions"]
+    url = root + f"/voices/{KEY}/preview"
+    assert client.get(url).content == b"sample"
+    assert client.get(url).content == b"sample" and not provider.posts
     auth.identity = replace(auth.identity, email="outside@example.com")
-    assert client.get(voice["preview_url"]).status_code == 404
+    assert client.get(url).status_code == 404
 
 
 def test_preview_batch_does_not_repeat_unknown_paid_attempt(tmp_path, monkeypatch):

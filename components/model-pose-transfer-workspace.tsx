@@ -50,6 +50,7 @@ import { IMAGE_UPLOAD_FORMAT_HINT } from "@/lib/image-upload";
 import { jobNote } from "@/lib/jobs/presentation";
 import { selectJobResultAssets } from "@/lib/jobs/results";
 import styles from "./model-pose-transfer-workspace.module.css";
+import { withBasePath } from "@/lib/base-path";
 
 type PoseGender = "female" | "male";
 type PoseMode = "catalog" | "custom";
@@ -135,11 +136,11 @@ function poseLabel(pose: PoseCatalogItem): string {
 }
 
 function thumbnailUrl(pose: PoseCatalogItem, width: 320 | 640): string {
-  return `/images/model-pose-transfer/thumbs/${pose.slug}-${width}.webp`;
+  return withBasePath(`/images/model-pose-transfer/thumbs/${pose.slug}-${width}.webp`);
 }
 
 function previewUrl(pose: PoseCatalogItem): string {
-  return `/images/model-pose-transfer/previews/${pose.slug}-960.webp`;
+  return withBasePath(`/images/model-pose-transfer/previews/${pose.slug}-960.webp`);
 }
 
 async function materializeCatalogPose(

@@ -12,6 +12,73 @@ from typing import Any
 from .. import video_editing_apple_contracts as contracts
 from ..video_editing_captioning import text_boundaries
 from ..video_editing_contracts import Transcript
+from . import frame_policy as framing
+from . import info_card
+from . import sync_policy as sync
+
+CAPTION_LINES = "bihuo-caption-lines/1"
+# A line with at most this many word characters next to a longer one is an
+# orphan ("质地" over "清爽不黏腻，") when the whole caption fits on one line.
+ORPHAN_CHARS = 2
+CAPSULE_ENDING = "bihuo-capsule-ending/1"
+
+
+def _merged_line(lines: list[dict]) -> dict:
+    first, second = lines
+    shift = len(first["text"])
+    return {
+        **first,
+        "text": first["text"] + second["text"],
+        "emphasis_spans": [list(span) for span in first.get("emphasis_spans", [])]
+        + [[a + shift, b + shift] for a, b in second.get("emphasis_spans", [])],
+    }
+
+
+def _hold_capsule_card(payload: dict) -> dict:
+    """Keep bihuo-02's information card up to the last frame when nothing follows.
+
+    Without a closing quote the bundle exits the card over the last 0.36 s and
+    schedules its closing card at the clip end, i.e. after the last frame: the
+    card grows past the side margins while fading and the final frame is empty
+    apart from the presenter circle (acceptance 2026-11-26, ACCEPT-39 #5).
+    Only in that case the card exit moves past the end; a closing card that
+    starts inside the clip keeps the native exit.
+    """
+    if payload.get("template_id") != "bihuo-02-v1":
+        return payload
+    cfg = payload.get("config")
+    if not isinstance(cfg, dict):
+        return payload
+    third = cfg.get("third") or {}
+    frames = int(cfg.get("frame_count") or cfg.get("frames") or 0)
+    fps = float(cfg.get("fps") or 25)
+    exit_times = cfg.get("card_exit")
+    if not frames or not isinstance(exit_times, list) or len(exit_times) != 2:
+        return payload
+    last = (frames - 1) / fps
+    record = {
+        "version": CAPSULE_ENDING,
+        "original_exit": list(exit_times),
+        "held": False,
+    }
+    if float(third.get("title_at", 0)) <= last:
+        record["reason"] = "closing card starts inside the clip"
+    elif float(exit_times[0]) > last:
+        record["reason"] = "card already stays to the end"
+    else:
+        held = [
+            round(float(cfg["duration"]) + 1.0, 3),
+            round(float(cfg["duration"]) + 1.35, 3),
+        ]
+        cfg["card_exit"] = held
+        spec = cfg.get("_list_spec")
+        if isinstance(spec, dict) and isinstance(spec.get("events"), dict):
+            spec["events"]["exit"] = list(held)
+        record.update(
+            held=True, exit=held, reason="closing card starts after the last frame"
+        )
+    cfg["capsule_ending"] = record
+    return payload
 
 
 def _fit_capsule_captions(payload: dict, transcript: Transcript) -> dict:
@@ -41,8 +108,16 @@ def _fit_capsule_captions(payload: dict, transcript: Transcript) -> dict:
         )
 
     changed = []
+    merged = []
     for cue in cfg["captions"]:
         lines = cue.get("lines", [{"text": cue["text"], "emphasis_spans": []}])
+        if len(lines) == 2:
+            short = min(len(re.findall(r"\w", line["text"])) for line in lines)
+            whole = _merged_line(lines)
+            if short <= ORPHAN_CHARS and width(whole) <= limit:
+                changed.append({**cue, "lines": [whole]})
+                merged.append(cue["text"])
+                continue
         if all(width(line) <= limit for line in lines):
             changed.append(cue)
             continue
@@ -110,6 +185,11 @@ def _fit_capsule_captions(payload: dict, transcript: Transcript) -> dict:
         changed.append({**cue, "lines": min(candidates, key=lambda row: row[0])[1]})
     if any(a is not b for a, b in zip(changed, cfg["captions"], strict=True)):
         payload = {**payload, "config": {**cfg, "captions": changed}}
+    if merged:
+        payload["config"]["caption_lines"] = {
+            "version": CAPTION_LINES,
+            "merged": merged,
+        }
     # Exercise the actual native painter now; do not defer capacity errors to
     # the subprocess after source preparation and a long video render.
     for cue in payload["config"]["captions"]:
@@ -282,6 +362,139 @@ def fit_recorded_display_spans(raw: dict, transcript: Transcript) -> dict:
     return raw
 
 
+_FUNCTION_WORDS = set(
+    "的了着过吗呢吧啊呀嘛就才都也还又而但并再更很太把被让给对在是和跟或我你他她它们这那个一"
+)
+
+
+def _token_offsets(transcript: Transcript) -> tuple[str, list[int]]:
+    starts, cursor = [], 0
+    for word in transcript.tokens:
+        starts.append(cursor)
+        cursor += len(word.text)
+    return "".join(word.text for word in transcript.tokens), starts
+
+
+def _span_at(transcript: Transcript, starts: list[int], a: int, b: int) -> dict | None:
+    """Token span covering source characters [a, b); None if it is empty."""
+    ids = [
+        word.id
+        for word, start in zip(transcript.tokens, starts, strict=True)
+        if start < b and start + len(word.text) > a
+    ]
+    return {"first_token_id": ids[0], "last_token_id": ids[-1]} if ids else None
+
+
+def repair_provider_shapes(
+    raw: dict[str, Any], transcript: Transcript
+) -> dict[str, Any]:
+    """Deterministic, free repairs of two recurring provider slips (dev 11-28).
+
+    1. ``opening.title``/``subtitle`` returned as plain text instead of token
+       spans: bind verbatim text (punctuation ignored) to its recorded tokens,
+       otherwise to the opening clause sharing the most characters with it.
+    2. No caption carries any keyword emphasis although the contract needs
+       some: mark one lexical word (2–4 characters, not a function word) per
+       caption. Speech, clocks and caption spans are untouched; the strict
+       contract still checks the result.
+    """
+    if not isinstance(raw, dict):
+        return raw
+    text, starts = _token_offsets(transcript)
+    index = {word.id: i for i, word in enumerate(transcript.tokens)}
+    changed = deepcopy(raw)
+    notes = []
+    opening = changed.get("opening")
+    if isinstance(opening, dict) and any(
+        isinstance(opening.get(k), str) for k in ("title", "subtitle")
+    ):
+        intro_id = opening.get("intro_last_token_id")
+        intro = (
+            index.get(intro_id, len(starts) - 1)
+            if isinstance(intro_id, str)
+            else len(starts) - 1
+        )
+        limit = starts[intro] + len(transcript.tokens[intro].text)
+        head = text[:limit]
+        clean = re.compile(r"[\W_]+")
+        clauses = [m.span() for m in re.finditer(r"[^，。！？；,.!?;、\s]+", head)]
+        for key in ("title", "subtitle"):
+            value = opening.get(key)
+            if not isinstance(value, str):
+                continue
+            wanted = clean.sub("", value)
+            bound = None
+            if wanted:
+                plain = [(i, ch) for i, ch in enumerate(head) if not clean.match(ch)]
+                joined = "".join(ch for _, ch in plain)
+                at = joined.find(wanted)
+                if at >= 0:
+                    a, b = plain[at][0], plain[at + len(wanted) - 1][0] + 1
+                    bound = _span_at(transcript, starts, a, b)
+            if bound is None and clauses and wanted:
+                a, b = max(
+                    clauses, key=lambda c: len(set(head[c[0] : c[1]]) & set(wanted))
+                )
+                bound = _span_at(transcript, starts, a, b)
+            if bound is None:
+                return raw
+            opening[key] = bound
+        notes.append("开场标题按原话对齐到口播词。")
+    captions = changed.get("captions")
+    if (
+        isinstance(captions, list)
+        and captions
+        and all(isinstance(c, dict) and not c.get("emphasis") for c in captions)
+        and len(re.findall(r"\w", text)) >= 12
+    ):
+        safe, _ = text_boundaries(text)
+        cuts = sorted(safe | {0, len(text)})
+        for cue in captions:
+            if (
+                cue.get("first_token_id") not in index
+                or cue.get("last_token_id") not in index
+            ):
+                return raw
+            first, last = index[cue["first_token_id"]], index[cue["last_token_id"]]
+            a = starts[first]
+            b = starts[last] + len(transcript.tokens[last].text)
+            brk = index.get(cue.get("line_break_after_token_id") or "")
+            split = (
+                starts[brk] + len(transcript.tokens[brk].text)
+                if brk is not None
+                else None
+            )
+            edges = [x for x in cuts if a <= x <= b]
+            words = []
+            for x, y in zip(edges, edges[1:], strict=False):
+                word = text[x:y]
+                core = re.sub(r"\W+$", "", word)
+                if not 2 <= len(core) <= 4 or not re.fullmatch(r"\w+", core):
+                    continue
+                if core[0] in _FUNCTION_WORDS or core[-1] in _FUNCTION_WORDS:
+                    continue
+                if split is not None and x < split < x + len(core):
+                    continue
+                words.append((len(core), x, x + len(core)))
+            if words:
+                _, x, y = max(words, key=lambda w: (w[0], w[1]))
+                span = _span_at(transcript, starts, x, y)
+                if span:
+                    cue["emphasis"] = [span]
+        if any(c.get("emphasis") for c in captions):
+            notes.append("字幕重点词按原话补齐。")
+    if not notes:
+        return raw
+    warnings = changed.setdefault("warnings", [])
+    notice = "".join(notes)
+    if isinstance(warnings, list):
+        if len(warnings) < 12:
+            warnings.append(notice)
+        else:
+            warnings[-1] = str(warnings[-1])[: 299 - len(notice)] + "；" + notice
+    return changed
+
+
 def verify_plan(
     raw: dict[str, Any],
     transcript: Transcript,
@@ -290,7 +503,9 @@ def verify_plan(
     require_semantic_captions: bool = False,
     allow_mixed_body: bool = True,
 ) -> dict[str, Any]:
-    raw = fit_recorded_display_spans(raw, transcript)
+    raw = fit_recorded_display_spans(
+        repair_provider_shapes(raw, transcript), transcript
+    )
     original = contracts.AppleSuitePlan.model_validate(raw)
     # Validate each sequence with the unchanged strict word/schema/caption
     # checks. They may interleave with each other, never reorder internally.
@@ -365,6 +580,9 @@ def compile_render_input(
     ffmpeg: str = "ffmpeg",
     size: tuple[int, int] = (1080, 1920),
     recipe_compiler: Any = None,
+    template_id: str | None = None,
+    sync_policy: str = sync.OFF,
+    frame_policy: str = framing.OFF,
 ) -> dict[str, Any]:
     if recipe_compiler is None:
         raise ValueError("Bihuo compilation requires its selected recipe compiler")
@@ -372,14 +590,36 @@ def compile_render_input(
     def fitted_recipe(resolved: dict, **options: Any) -> dict:
         from .conditional_layout import prepare
 
-        return prepare(
+        # Speech-led visual timing is a versioned compile-time policy; the
+        # saved plan, word clock and installed bundle stay unchanged.
+        timed, record = sync.apply(resolved, template_id, sync_policy)
+        payload = prepare(
             _fit_capsule_captions(
                 recipe_compiler(
-                    native_caption_text(resolved, verified, transcript), **options
+                    native_caption_text(timed, verified, transcript), **options
                 ),
                 transcript,
             )
         )
+        payload = _hold_capsule_card(payload)
+        # Opening info card in spoken order (bihuo-info-card/1).
+        payload = info_card.apply(payload)
+        if (
+            sync_policy != sync.OFF
+            and isinstance(payload, dict)
+            and isinstance(payload.get("config"), dict)
+        ):
+            payload["config"]["sync_policy"] = record
+        if frame_policy not in framing.POLICIES:
+            raise ValueError("Unknown frame layout policy")
+        if (
+            frame_policy != framing.OFF
+            and isinstance(payload, dict)
+            and isinstance(payload.get("config"), dict)
+        ):
+            # Render-time face safety and transitions (bihuo-frame/1).
+            payload["config"]["frame_policy"] = {"version": frame_policy}
+        return payload
 
     cards = [{**asset, "id": ident} for ident, asset in asset_files.items()]
     verified = verify_plan(plan, transcript, cards)

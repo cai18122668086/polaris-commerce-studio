@@ -24,6 +24,7 @@ import {
   formatDateTime,
   jobAssetRoleLabel,
   jobStageLabel,
+  localEditReviewReasons,
   jobTitle,
   jobTypeLabel,
   safeJobFailureSummary,
@@ -38,6 +39,23 @@ import {
 import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
 import { TaskWorkspaceLink } from "@/components/task-workspace-link";
 import { JobItemList } from "./job-item-list";
+import { JobRegenerateSet, canRegenerateSet } from "./job-regenerate-set";
+
+function LocalEditReviewNotice({ job }: { job: JobDetail }) {
+  const candidate = job.assets.find((asset) => asset.role === "locked_candidate");
+  const rejected = candidate?.validation.review_state === "reject" || job.error_code === "LOCAL_EDIT_VISUAL_REVIEW_REJECTED";
+  const reasons = localEditReviewReasons(candidate?.validation.visual_review_reason_codes);
+  const charged = job.cost.actual_credits;
+  const unit = job.cost.estimated_credits;
+  return <section className="job-review-notice" aria-labelledby={`job-review-${job.id}`}>
+    <strong id={`job-review-${job.id}`}>{rejected ? "修改版已生成，系统检查发现问题" : "修改版已生成，等待你确认"}</strong>
+    {rejected
+      ? <p>{reasons.length ? `系统检查认为：${reasons.join("、")}。` : "系统检查认为这次修改效果有明显问题。"}这只是提醒，修改版已经保留，你可以预览后仍然采用，或调整要求再生成。</p>
+      : <p>请预览修改效果，满意就采用；不满意可以调整要求再生成。</p>}
+    <p className="job-review-notice__credits">{typeof job.configuration._local_edit_free_of_asset_id === "string" ? "这次修改用的是免费次数，没有扣积分。每张生成图有 3 次免费修改，再次生成会先用剩余次数。" : typeof charged === "number" && charged > 0 ? `本次生成已结算 ${charged} 积分，采用这版不会再次扣费。` : "采用这版不会额外扣费。"}{typeof unit === "number" && unit > 0 ? `调整要求再生成会新建一次生成，另计 ${unit} 积分。` : "调整要求再生成会新建一次生成，另行计费。"}</p>
+    <TaskWorkspaceLink className="primary-button" href={jobWorkspaceHref(job)}>去确认修改效果</TaskWorkspaceLink>
+  </section>;
+}
 import { JobProgress } from "./job-progress";
 
 function resultEmptyMessage(job: JobDetail): string {
@@ -64,6 +82,7 @@ export function JobDetailPanel({
   onRetry,
   onRetryItem,
   onConfirmPlan,
+  onOpenJob,
   cancelPending,
   retryPending,
   confirmPending,
@@ -75,6 +94,7 @@ export function JobDetailPanel({
   onRetry: (job: JobDetail) => void;
   onRetryItem: (job: JobDetail, itemId: string) => void;
   onConfirmPlan: (job: JobDetail) => void;
+  onOpenJob?: (jobId: string) => void;
   cancelPending: boolean;
   retryPending: boolean;
   confirmPending: boolean;
@@ -86,6 +106,7 @@ export function JobDetailPanel({
   const resultAssets = selectJobResultAssets(job);
   const intermediateAssets = selectJobIntermediateAssets(job);
   const permittedActions = job?.allowed_actions ?? [];
+  const localEditReview = job?.type === "local_edit" && job.status === "awaiting_final_review";
 
   return (
     <>
@@ -105,20 +126,22 @@ export function JobDetailPanel({
         {job && (
           <div className="job-detail-content">
             <div className="job-detail-heading">
-              <div><StatusBadge status={job.status} /><span>{jobTypeLabel(job.type)}</span></div>
+              <div><StatusBadge status={job.status} jobType={job.type} /><span>{jobTypeLabel(job.type)}</span></div>
               <button type="button" className="icon-button" onClick={() => void detail.refetch()} disabled={detail.isFetching} aria-label="刷新任务详情" title="刷新">
                 <RefreshCw size={16} className={detail.isFetching ? "spin" : ""} />
               </button>
             </div>
-            <JobProgress job={job} error={detail.error} lastSyncedAt={detail.dataUpdatedAt} refreshing={detail.isFetching} onRefresh={() => void detail.refetch()} />
-            <TaskWorkspaceLink className="secondary-button" href={jobWorkspaceHref(job)}>打开对应工作台</TaskWorkspaceLink><JobCreditSettlement workspaceId={workspaceId} jobId={job.id} />
+            <JobProgress job={job} error={detail.error} lastSyncedAt={detail.dataUpdatedAt} refreshing={detail.isFetching} onRefresh={() => void detail.refetch()} suppressFailureDetails={localEditReview || canRegenerateSet(job)} />
+            {localEditReview && <LocalEditReviewNotice job={job} />}
+            {canRegenerateSet(job) && <JobRegenerateSet workspaceId={workspaceId} job={job} onCreated={(id) => onOpenJob?.(id)} />}
+            {!localEditReview && <TaskWorkspaceLink className="secondary-button" href={jobWorkspaceHref(job)}>打开对应工作台</TaskWorkspaceLink>}<JobCreditSettlement workspaceId={workspaceId} jobId={job.id} job={job} />
 
             <section className="job-detail-section">
               <div className="job-detail-section__head"><div><span className="job-section-eyebrow">任务信息</span><h3>任务概况</h3></div><small>{detail.isFetching ? "更新中…" : "实时更新"}</small></div>
               <dl className="job-detail-facts">
                 <div><dt>任务编号</dt><dd>{job.id}</dd></div>
                 <div><dt>任务类型</dt><dd>{jobTypeLabel(job.type)}</dd></div>
-                <div><dt>阶段</dt><dd>{jobStageLabel(job.stage, job.status)}</dd></div>
+                <div><dt>阶段</dt><dd>{jobStageLabel(job.stage, job.status, job.type)}</dd></div>
                 <div><dt>创建时间</dt><dd>{formatDateTime(job.created_at)}</dd></div>
                 <div><dt>开始时间</dt><dd>{formatDateTime(job.started_at)}</dd></div>
                 <div><dt>更新时间</dt><dd>{formatDateTime(job.updated_at)}</dd></div>
@@ -171,7 +194,7 @@ export function JobDetailPanel({
               </section>
             )}
 
-            {job.error_code && <section className="job-detail-error" role="alert"><FileWarning size={18} /><div><strong>任务未完成</strong><p>{safeJobFailureSummary(job.error_code)}</p><small>错误码：{job.error_code}</small></div></section>}
+            {job.error_code && !localEditReview && !canRegenerateSet(job) && <section className="job-detail-error" role="alert"><FileWarning size={18} /><div><strong>任务未完成</strong><p>{safeJobFailureSummary(job.error_code)}</p><small>错误码：{job.error_code}</small></div></section>}
 
             <section className="job-detail-section">
               <div className="job-detail-section__head"><div><span className="job-section-eyebrow">执行明细</span><h3>分项状态</h3></div><small>{job.items.length} 项</small></div>
@@ -181,8 +204,8 @@ export function JobDetailPanel({
             <section className="job-detail-actions" aria-label="任务操作">
               <div className="job-detail-section__head"><div><span className="job-section-eyebrow">可用操作</span><h3>继续处理</h3></div></div>
               <div className="job-action-buttons"><TaskWorkspaceLink className="secondary-button" href={`/account?jobId=${encodeURIComponent(job.id)}#help`}>联系帮助，关联此任务</TaskWorkspaceLink>
-                {allowsJobAction(permittedActions, "retry") && <button type="button" className="secondary-button" onClick={() => onRetry(job)} disabled={retryPending}><RotateCcw size={15} />重试失败项</button>}
-                {allowsJobAction(permittedActions, "cancel") && <button type="button" className="secondary-button danger-button" onClick={() => onCancel(job)} disabled={cancelPending}><Ban size={15} />取消任务</button>}
+                {allowsJobAction(permittedActions, "retry") && !localEditReview && <button type="button" className="secondary-button" onClick={() => onRetry(job)} disabled={retryPending}><RotateCcw size={15} />重试失败项</button>}
+                {allowsJobAction(permittedActions, "cancel") && <button type="button" className="secondary-button danger-button" onClick={() => onCancel(job)} disabled={cancelPending}><Ban size={15} />{localEditReview ? "放弃本次修改" : "取消任务"}</button>}
                 {allowsJobAction(permittedActions, "confirm_plan") && job.plan && <button type="button" className="primary-button" onClick={() => onConfirmPlan(job)} disabled={confirmPending}><Check size={15} />确认方案</button>}
                 {!permittedActions.length && <p className="job-no-actions"><ShieldAlert size={15} />当前任务没有可用操作</p>}
               </div>

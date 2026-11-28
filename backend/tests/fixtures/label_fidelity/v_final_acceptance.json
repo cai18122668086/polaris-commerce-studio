@@ -1,0 +1,190 @@
+{
+ "source": "Agent V final acceptance run 2026-11-25 (V/最终验收). Readings are the blind label_fidelity_read answers for V's real outputs, recorded through the production gate code path (4 overlapping tiles, detail=high).",
+ "reference": {
+  "job": "job_4634a20d55c348ca816ce7bcf059b94c",
+  "image_sha256": "c2702631edce7fbe32abbf0aa181b8edb6abab46dfd3e3e0f9d93d73dd1710be",
+  "label_lines": [
+   "OLAY",
+   "密集美白",
+   "改善顽固色沉",
+   "烟酰胺·色淡林",
+   "精光身体乳",
+   "浮光栀子香"
+  ]
+ },
+ "pages": {
+  "detail_p2": {
+   "job": "job_36acb4a171c949f48c692e801c2676cd",
+   "image_sha256": "25be2a1d27a7b5d3d22a60288fc55c4ead42eeb408204b2932eb581dcbee5395",
+   "products": [
+    [
+     "OLAY",
+     "OLAY",
+     "密集美白",
+     "改善顽固色沉",
+     "烟酰胺·色淡林",
+     "精华身体乳",
+     "浮光栀子香"
+    ]
+   ],
+   "other_text_lines": [
+    "烟酰胺·色淡林",
+    "精华配方"
+   ],
+   "expect": [
+    [
+     "精光身体乳",
+     "精华身体乳",
+     "product"
+    ]
+   ]
+  },
+  "xb_detail_p2": {
+   "job": "job_24d96e14e1d14a3380c5341bdd950e20",
+   "image_sha256": "bd478466a77dc1b8203c6a82b2309e63d9ec8192e2a73ca19f280ef14345f82b",
+   "products": [
+    [
+     "OLAY",
+     "OLAY",
+     "密集美白",
+     "改善顏色不均",
+     "烟酰胺·色淡林",
+     "精光身体乳",
+     "浮光栀子香"
+    ]
+   ],
+   "other_text_lines": [
+    "Formula Details,",
+    "Clearly Presented",
+    "Niacinamide · 色淡林"
+   ],
+   "expect": [
+    [
+     "改善顽固色沉",
+     "改善顏色不均",
+     "product"
+    ]
+   ]
+  },
+  "main_p2_repaired": {
+   "job": "job_4634a20d55c348ca816ce7bcf059b94c",
+   "image_sha256": "388cfe5a03bdffe1e2c986dd2e198df234881a527bf64dead0f369ed3aefa608",
+   "products": [
+    [
+     "OLAY",
+     "密集美白",
+     "改善顽固色沉",
+     "烟酰胺·色淡林",
+     "精光身体乳",
+     "浮光瓶子香"
+    ]
+   ],
+   "other_text_lines": [
+    "260g",
+    "大容量",
+    "烟酰胺·色淡林 精华配方"
+   ],
+   "expect": [
+    [
+     "浮光栀子香",
+     "浮光瓶子香",
+     "product"
+    ]
+   ]
+  },
+  "main_r1_p1_callout": {
+   "job": "job_0b0beb1f74e74c2fbb3c0343352f37b8",
+   "image_sha256": "da93766044204b462032ab5ff5f39f36e696df6e6805e7fc1448e6ba74dd2b51",
+   "products": [
+    [
+     "OLAY",
+     "OLAY",
+     "密集美白",
+     "改善顽固色沉",
+     "烟酰胺·色淡林",
+     "精光身体乳",
+     "浮光栀子香"
+    ]
+   ],
+   "other_text_lines": [
+    "OLAY",
+    "7天美白",
+    "一润到底",
+    "烟酰胺·色淡林 精华配方",
+    "260g",
+    "精华身体乳",
+    "浮光栀子香",
+    "260g 大容量"
+   ],
+   "expect": [
+    [
+     "精光身体乳",
+     "精华身体乳",
+     "off_product"
+    ]
+   ]
+  },
+  "main_p2_draft": {
+   "job": "job_4634a20d55c348ca816ce7bcf059b94c",
+   "image_sha256": "f056f9e13fa937ee763bdc819c93e04f1ad4c0134eb62aeb68df2c7631cbb955",
+   "products": [
+    [
+     "OLAY",
+     "OLAY",
+     "密集美白",
+     "改善顽固色沉",
+     "烟酰胺·色淡林",
+     "精光身体乳",
+     "浮光栀子香"
+    ]
+   ],
+   "other_text_lines": [
+    "260g",
+    "大容量",
+    "烟酰胺·色淡林 精华配方"
+   ],
+   "expect": []
+  },
+  "detail_p3_traditional_reading": {
+   "job": "job_36acb4a171c949f48c692e801c2676cd",
+   "image_sha256": "7d291bf655048d9166409ed03161da372186d685845a822d6c70d6493d3cf022",
+   "products": [
+    [
+     "OLAY",
+     "OLAY",
+     "密集美白",
+     "改善頑固色沉",
+     "烟酰胺·色淡林",
+     "精光身体乳",
+     "浮光梔子香"
+    ]
+   ],
+   "other_text_lines": [
+    "浮光梔子香",
+    "精致香氛"
+   ],
+   "expect": []
+  },
+  "xb_detail_p1": {
+   "job": "job_24d96e14e1d14a3380c5341bdd950e20",
+   "image_sha256": "e83a6767f28ba172b8bb7e66935ef2169df6e2836738adf915b0fee82474e75a",
+   "products": [
+    [
+     "OLAY",
+     "OLAY",
+     "密集美白",
+     "改善顽固色沉",
+     "烟酰胺·色淡林",
+     "精光身体乳",
+     "浮光栀子香"
+    ]
+   ],
+   "other_text_lines": [
+    "A Brighter-Looking",
+    "Body Care Ritual",
+    "7-Day Brightening*"
+   ],
+   "expect": []
+  }
+ }
+}

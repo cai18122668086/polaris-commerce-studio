@@ -115,16 +115,18 @@ test("retry visibility follows allowed_actions only", () => {
 });
 
 
-test("job detail displays stages without fabricating unknown values", () => {
+test("job detail maps stages to Chinese and never shows raw internal stage codes", () => {
   assert.equal(jobStageLabel("generating", "processing"), "\u751f\u6210\u4e2d");
-  assert.equal(jobStageLabel("provider_specific_stage", "processing"), "\u9636\u6bb5\uff1aprovider_specific_stage");
+  assert.equal(jobStageLabel("provider_specific_stage", "processing"), "处理中");
+  assert.equal(jobStageLabel("awaiting_local_edit_review", "awaiting_final_review", "local_edit"), "等待确认修改效果");
   assert.equal(jobStageLabel(null, "completed"), "\u5df2\u5b8c\u6210");
 });
 
 test("job detail labels item statuses and asset roles from backend values", () => {
   assert.equal(jobItemStatusLabel("failed"), "\u5931\u8d25");
   assert.equal(jobAssetRoleLabel("pose_reference"), "\u59ff\u52bf\u53c2\u8003");
-  assert.equal(jobAssetRoleLabel("provider_output"), "provider output");
+  assert.equal(jobAssetRoleLabel("provider_output"), "其他素材");
+  assert.equal(jobAssetRoleLabel("locked_candidate"), "局部合成候选");
 });
 
 test("job record list uses the summary contract instead of per-card detail queries", async () => {

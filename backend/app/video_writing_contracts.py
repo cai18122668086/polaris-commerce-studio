@@ -14,6 +14,23 @@ class ReferenceSentence(StrictVideoModel):
     text: str
 
 
+class SourceMetrics(StrictVideoModel):
+    """Public counts captured with the post; never a play-through rate."""
+
+    platform: Literal["douyin", "xiaohongshu", "bilibili"]
+    title: str = Field(default="", max_length=200)
+    author_name: str | None = Field(default=None, max_length=200)
+    author_follower_count: int | None = Field(default=None, ge=0)
+    duration_seconds: float | None = Field(default=None, ge=0)
+    posted_at: str | None = Field(default=None, max_length=40)
+    like_count: int | None = Field(default=None, ge=0)
+    comment_count: int | None = Field(default=None, ge=0)
+    collect_count: int | None = Field(default=None, ge=0)
+    share_count: int | None = Field(default=None, ge=0)
+    view_count: int | None = Field(default=None, ge=0)
+    readings: list[str] = Field(default_factory=list, max_length=6)
+
+
 class WritingReference(StrictVideoModel):
     reference_id: UUID
     original_text: str = Field(min_length=1, max_length=6000)
@@ -21,8 +38,9 @@ class WritingReference(StrictVideoModel):
     source_note: str = ""
     source_project_revision: int | None = Field(default=None, ge=1)
     sentences: list[ReferenceSentence]
+    source_metrics: SourceMetrics | None = None
     visual_evidence: Literal["not_provided"] = "not_provided"
-    interaction_evidence: Literal["not_provided"] = "not_provided"
+    interaction_evidence: Literal["not_provided", "public_counts"] = "not_provided"
 
 
 class FactItem(StrictVideoModel):
@@ -64,6 +82,61 @@ class AnalysisSection(StrictVideoModel):
     last_sentence_id: str
     function: str = Field(min_length=1, max_length=100)
     explanation: str = Field(min_length=1, max_length=1200)
+    technique: str = Field(default="", max_length=200)
+    emotion: str = Field(default="", max_length=60)
+
+
+HookType = Literal[
+    "痛点提问",
+    "反常识",
+    "结果前置",
+    "身份代入",
+    "悬念设问",
+    "数字清单",
+    "冲突对比",
+    "利益承诺",
+    "情绪共鸣",
+    "场景代入",
+    "其他",
+]
+
+
+class HookAnalysis(StrictVideoModel):
+    sentence_ids: list[str] = Field(min_length=1, max_length=5)
+    type: HookType
+    technique: str = Field(min_length=1, max_length=200)
+    why: str = Field(min_length=1, max_length=400)
+
+
+class ExpressionTechnique(StrictVideoModel):
+    name: str = Field(min_length=1, max_length=40)
+    sentence_id: str
+    quote: str = Field(min_length=1, max_length=300)
+    effect: str = Field(min_length=1, max_length=300)
+    how_to_reuse: str = Field(min_length=1, max_length=300)
+
+
+class AudienceInsight(StrictVideoModel):
+    who: str = Field(min_length=1, max_length=200)
+    pain_points: list[str] = Field(default_factory=list, max_length=8)
+    desire: str = Field(default="", max_length=200)
+
+
+class ConversionCue(StrictVideoModel):
+    sentence_id: str
+    kind: Literal["关注", "点赞", "收藏", "评论", "转发", "下单", "私信", "其他"]
+    note: str = Field(min_length=1, max_length=200)
+
+
+class ReplaceSlot(StrictVideoModel):
+    """A place in the source the user must fill with their own fact."""
+
+    id: str = Field(min_length=1, max_length=40, pattern=r"^[A-Za-z0-9_-]+$")
+    category: Literal["identity", "product", "story"]
+    sentence_id: str
+    source_quote: str = Field(min_length=1, max_length=300)
+    label: str = Field(min_length=1, max_length=40)
+    question: str = Field(min_length=1, max_length=120)
 
 
 class SourceClaim(StrictVideoModel):
@@ -75,16 +148,40 @@ class SourceClaim(StrictVideoModel):
 
 
 class WritingAnalysis(StrictVideoModel):
-    schema_version: Literal["tengli.writing-analysis/1"] = "tengli.writing-analysis/1"
+    schema_version: Literal[
+        "tengli.writing-analysis/1", "tengli.writing-analysis/2"
+    ] = "tengli.writing-analysis/2"
     topic: str = Field(min_length=1, max_length=300)
     hook_sentence_ids: list[str] = Field(min_length=1, max_length=10)
     sections: list[AnalysisSection] = Field(min_length=1, max_length=60)
     source_claims: list[SourceClaim] = Field(default_factory=list, max_length=100)
     reusable_structure: list[str] = Field(min_length=1, max_length=30)
     limitations: list[str] = Field(min_length=1, max_length=30)
+    title_formula: str = Field(default="", max_length=200)
+    hook: HookAnalysis | None = None
+    expressions: list[ExpressionTechnique] = Field(default_factory=list, max_length=10)
+    audience: AudienceInsight | None = None
+    conversion: list[ConversionCue] = Field(default_factory=list, max_length=8)
+    replace_slots: list[ReplaceSlot] = Field(default_factory=list, max_length=20)
+    why_hot: list[str] = Field(default_factory=list, max_length=6)
     visual_review: Literal["not_provided"] = "not_provided"
     cross_account_comparison: Literal["not_provided"] = "not_provided"
-    interaction_analysis: Literal["not_provided"] = "not_provided"
+    interaction_analysis: Literal["not_provided", "public_counts"] = "not_provided"
+
+
+class WritingComparison(StrictVideoModel):
+    """What 2–3 analysed benchmarks share; the user picks the main one."""
+
+    schema_version: Literal["tengli.writing-comparison/1"] = (
+        "tengli.writing-comparison/1"
+    )
+    common_hooks: list[str] = Field(min_length=1, max_length=6)
+    common_structure: list[str] = Field(min_length=1, max_length=10)
+    common_expressions: list[str] = Field(default_factory=list, max_length=8)
+    differences: list[str] = Field(default_factory=list, max_length=8)
+    template_reuse: str = Field(default="", max_length=300)
+    recommended_reference_document_id: str
+    recommendation_reason: str = Field(min_length=1, max_length=400)
 
 
 WritingDraftMode = Literal["structure", "shadow"]
@@ -107,8 +204,28 @@ class FactReplacement(StrictVideoModel):
     fact_id: str
 
 
+PublishPlatform = Literal["douyin", "xiaohongshu"]
+
+
 class DraftContent(StrictVideoModel):
     title: str = Field(min_length=1, max_length=80)
+    # 发布用的标题和正文（v3）。旧稿没有这两项，读取时为空字符串；新写的稿由
+    # validate_publish 检查平台字数、话题标签和事实约束。
+    publish_title: str = Field(
+        default="",
+        max_length=80,
+        description="发布标题：口语、有钩子，按平台字数上限，不含话题标签",
+    )
+    publish_body: str = Field(
+        default="",
+        max_length=2000,
+        description="发布正文：可直接粘贴发布，末尾带3到6个#话题标签",
+    )
+    benchmark_brands: list[str] = Field(
+        default_factory=list,
+        max_length=30,
+        description="参考原文和对标标题里出现的品牌、店名、商品名、作者名，逐字照抄",
+    )
     replacements: list[FactReplacement] = Field(default_factory=list, max_length=100)
     missing_facts: list[str] = Field(default_factory=list, max_length=60)
     warnings: list[str] = Field(default_factory=list, max_length=30)
@@ -174,13 +291,21 @@ class WritingTaskRequest(StrictVideoModel):
     request_id: UUID
     project_id: UUID
     expected_revision: int = Field(ge=1)
-    kind: Literal["ref_analysis", "fact_draft"]
+    kind: Literal["ref_analysis", "fact_draft", "ref_compare"]
     reference_document_id: UUID
     analysis_document_id: UUID | None = None
+    # ref_compare only: the 2–3 saved analyses to compare.
+    analysis_document_ids: list[UUID] = Field(default_factory=list, max_length=3)
+    # fact_draft only: 1+ asks for a different opening hook than version 0.
+    variant: int = Field(default=0, ge=0, le=6)
     facts_document_id: UUID | None = None
     draft_mode: WritingDraftMode | None = None
     target_duration_seconds: int | None = Field(default=None, ge=5, le=300)
     presentation: Literal["on_camera", "hands_only", "unspecified"] = "unspecified"
+    # fact_draft only: where the title and body will be published. Omitted
+    # keeps the idempotency key of older requests; the reference's platform
+    # (else 抖音) is used then.
+    platform: PublishPlatform | None = None
 
     @model_validator(mode="after")
     def duration_basis(self) -> Self:
@@ -191,6 +316,13 @@ class WritingTaskRequest(StrictVideoModel):
             or self.draft_mode is not None
         ):
             raise ValueError("Reference analysis takes its source only")
+        if (self.kind == "ref_compare") != bool(self.analysis_document_ids):
+            raise ValueError("Comparison takes 2–3 analyses and nothing else")
+        if self.kind == "ref_compare" and (
+            len(set(self.analysis_document_ids)) != len(self.analysis_document_ids)
+            or len(self.analysis_document_ids) < 2
+        ):
+            raise ValueError("Comparison needs 2–3 distinct analyses")
         if (
             self.target_duration_seconds is not None
             and self.presentation == "unspecified"
@@ -207,6 +339,9 @@ class SaveWritingResult(StrictVideoModel):
 class ReviseWritingDraft(StrictVideoModel):
     request_id: UUID
     title: str = Field(min_length=1, max_length=80)
+    # Omitted: keep the previous version's publish title/body.
+    publish_title: str | None = Field(default=None, max_length=80)
+    publish_body: str | None = Field(default=None, max_length=2000)
     sentences: list[DraftSentence | StructureDraftLine] = Field(
         min_length=1, max_length=100
     )

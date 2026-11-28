@@ -4,6 +4,7 @@ import { CheckCircle2, Clock3, Info, LoaderCircle, RefreshCw } from "lucide-reac
 import { useSyncExternalStore } from "react";
 import { errorMessage } from "@/lib/api/request";
 import { formatJobElapsed, jobElapsedMilliseconds, presentJobProgress, type ProgressJob } from "@/lib/jobs/progress-feedback";
+import { jobFailureMessage } from "@/lib/jobs/presentation";
 import styles from "./job-progress-feedback.module.css";
 
 let clock = 0;
@@ -47,7 +48,10 @@ export function JobProgressFeedback({ job, pending = false, pendingLabel = "正�
   const moving = !disconnected && (pending || presentation?.running);
   const indeterminate = pending || presentation?.indeterminate;
   const elapsed = job && !pending ? jobElapsedMilliseconds(job, now) : null;
-  const detail = !suppressFailureDetails && job && "error_message" in job ? job.error_message : null;
+  // Backend error_message can be an English diagnostic or model rationale; show mapped Chinese copy only.
+  const detail = !suppressFailureDetails && job && "error_message" in job
+    ? jobFailureMessage(job.error_code, job.error_message, "error_details" in job ? job.error_details : undefined)
+    : null;
   if (!job && !pending) return null;
   const title = pending ? pendingLabel : presentation!.title;
   const description = pending ? "正在保存素材与参数，请稍候。" : presentation!.description;

@@ -6,15 +6,12 @@ import { emitAuthUnauthorised } from "@/lib/auth/session-events";
 
 import { pendingSignupInvitation } from "@/lib/auth/signup-invitation";
 
+import { API_BASE_URL } from "./base-url";
 import type { paths } from "./generated/openapi";
 
 // Browser requests default to the current origin. Internal and production deployments
 // route /api through the edge proxy; local development may opt into an explicit URL.
-const viteEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
-const baseUrl =
-  (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_API_BASE_URL?.trim() || "" : "") ||
-  viteEnv?.VITE_API_BASE_URL?.trim() ||
-  "";
+const baseUrl = API_BASE_URL;
 
 // openapi-fetch captures its fetch implementation when the client is created.
 // Resolve the global implementation at request time so SuperTokens can install
@@ -31,7 +28,8 @@ const requestMetadata: Middleware = {
       headers.set("X-User-Id", LOCAL_DEV_AUTH_USER_ID);
     }
     return new Request(request, {
-      credentials: isLocalDevelopmentAuthEnabled() ? "omit" : "include",
+      // 开发登录模式：同源请求带上浏览器已有的凭据（公网预览网关的登录），跨域请求仍不带。
+      credentials: isLocalDevelopmentAuthEnabled() ? "same-origin" : "include",
       headers,
     });
   },

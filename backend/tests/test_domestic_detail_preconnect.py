@@ -6,6 +6,7 @@ import http.client
 import io
 import ssl
 from collections import Counter
+from types import SimpleNamespace
 
 import pytest
 
@@ -114,7 +115,10 @@ def test_no_http_bytes_are_sent_when_setup_budget_is_exhausted(monkeypatch):
 def test_connect_attempt_never_exceeds_remaining_total_budget(monkeypatch):
     calls, sock = fixture(monkeypatch, failed_connects=99)
     clock = iter([0.0, 27.0, 29.0, 29.5, 30.0])
-    monkeypatch.setattr(native.time, "monotonic", lambda: next(clock))
+    # Script only the connect-budget clock. UrllibOpenAITransport._send also
+    # reads time.monotonic() for its stream deadline; patching the shared time
+    # module would let that call consume the first scripted tick.
+    monkeypatch.setattr(native, "time", SimpleNamespace(monotonic=lambda: next(clock)))
     timeouts = []
 
     def connect(connection):

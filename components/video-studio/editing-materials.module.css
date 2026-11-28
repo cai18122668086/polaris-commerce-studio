@@ -8,3 +8,92 @@
 .materials .uploadDropzone{position:relative;display:grid;justify-items:center;align-content:center;gap:12px;min-height:170px;padding:22px;border:1px dashed #d3dbe6;border-radius:12px;background:#fafbfd;color:#8c99aa;cursor:pointer;text-align:center}.uploadDropzone:focus-within{outline:2px solid #b5121b;outline-offset:3px}.uploadDropzone b{font-weight:500;color:#68768a;font-size:12px}.uploadDropzone small{font-size:10px;color:#a1aab7}.uploadDropzone input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;padding:0}.materials .dragging{border-color:#b5121b;background:#fff7f5}.pickedFile{display:grid;justify-items:center;gap:10px;min-width:0;max-width:100%;overflow-wrap:anywhere}.pickedFile img{width:90px;height:70px;object-fit:contain;border-radius:6px}.uploadFooter{display:flex;justify-content:flex-end;gap:10px;border-top:1px solid #edf0f4;padding-top:16px}.uploadFooter button{border:0;border-radius:8px;padding:11px 19px;background:#b5121b;color:#fff;font-size:12px;cursor:pointer}.uploadFooter button:disabled{opacity:.45;cursor:default}.secondaryAction{padding:9px 14px!important;border:1px solid #e1e6ed!important;border-radius:8px!important;background:#fff!important;color:#788392!important;font-size:11px!important;cursor:pointer}
 .materialPreviewDialog{width:min(760px,calc(100vw - 28px))!important;max-width:760px!important;border-radius:17px!important}.materialFullPreview{display:grid;place-items:center;min-height:220px;max-height:60dvh;background:#161b22;border-radius:10px;margin-top:16px;overflow:hidden}.materialFullPreview img,.materialFullPreview video{display:block;max-width:100%;width:auto;max-height:60dvh;object-fit:contain}.previewInfo{display:grid;gap:10px;padding-top:16px;font-size:12px;color:#68778a;line-height:1.8;overflow-wrap:anywhere}.previewInfo p{margin:0}.previewInfo small{color:#a0a9b5;font-size:11px}.previewInfo a{display:flex;align-items:center;gap:5px;width:fit-content;color:#b5121b;font-size:11px}
 @media(max-width:540px){.materialTiles{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.materialThumb{height:105px}.materialToolbar>div{gap:4px}.materialToolbar span{flex-basis:100%}.materialUploadDialog .sourceTabs button{font-size:11px}.materialBrowser .materialSearch{min-width:130px}.uploadFooter button{flex:1}}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .materialBrowser{--edit-accent:#fa682a;color:#dad7d5}
+:global(.theme-ember) .materialToolbar span{color:#69635d}
+:global(.theme-ember) .materialBrowser .addMaterial{border:1px solid #2c2a27!important;background:#151413!important;color:#fa682a!important}
+:global(.theme-ember) .materials>label{color:#a19b94}
+:global(.theme-ember) .materials input:not([type=checkbox]),:global(.theme-ember) .materials textarea,:global(.theme-ember) .materials select{border:1px solid #252321;background:#0f0e0d;color:#dad7d5}
+:global(.theme-ember) .note{color:#6d6760}
+:global(.theme-ember) .error{color:#fa682a}
+:global(.theme-ember) .materialFilters>div{background:#181716}
+:global(.theme-ember) .materialBrowser .materialFilters button{color:#726d65!important}
+:global(.theme-ember) .materialBrowser .materialFilters button[aria-pressed=true]{background:#0f0e0d!important;color:#dad7d5!important;box-shadow:0 1px 4px rgb(0 0 0 / 0.12)}
+:global(.theme-ember) .materialSearch{color:#625e57}
+:global(.theme-ember) .materialBrowser .materialSearch input{border-color:#201f1c!important;background:#0f0e0d!important}
+:global(.theme-ember) .materialCount{color:#635f58}
+:global(.theme-ember) .materialTiles li{border:1px solid #23211f;background:#0f0e0d}
+:global(.theme-ember) .materialTiles li[data-selected=true]{border-color:#fa682a;background:#131211}
+:global(.theme-ember) .materialBrowser .materialThumb{background:#1b1918!important;color:#89837a!important}
+:global(.theme-ember) .videoPlaceholder{background:#1d1b19;color:#757068}
+:global(.theme-ember) .mediaType{background:rgb(15 14 13 / 0.929);color:#969088}
+:global(.theme-ember) .materialSelected{background:#fa682a;color:#0f0e0d;border:2px solid #0f0e0d}
+:global(.theme-ember) .materialBrowser .materialSelect input{accent-color:#fa682a}
+:global(.theme-ember) .materialDescription{color:#5e5a54}
+:global(.theme-ember) .materialBrowser .emptyMaterials{border:1px dashed #2b2926!important;background:#131211!important;color:#68635c!important}
+:global(.theme-ember) .emptyMaterials b{color:#948e87}
+:global(.theme-ember) .emptyMaterials span{color:#625d56}
+:global(.theme-ember) .noMaterials{color:#68635c}
+:global(.theme-ember) .materialBrowser .noMaterials button{background:#181716!important;color:#938d85!important}
+:global(.theme-ember) .sourceTabs{background:#181716}
+:global(.theme-ember) .materialUploadDialog .sourceTabs button{color:#6d6861}
+:global(.theme-ember) .materialUploadDialog .sourceTabs button[aria-pressed=true]{background:#0f0e0d;color:#dedcda;box-shadow:0 1px 4px rgb(0 0 0 / 0.12)}
+:global(.theme-ember) .materials .uploadDropzone{border:1px dashed #2e2c29;background:#131211;color:#6d6861}
+:global(.theme-ember) .uploadDropzone:focus-within{outline:2px solid #fa682a}
+:global(.theme-ember) .uploadDropzone b{color:#938d85}
+:global(.theme-ember) .uploadDropzone small{color:#5b5751}
+:global(.theme-ember) .materials .dragging{border-color:#fa682a;background:#151413}
+:global(.theme-ember) .uploadFooter{border-top:1px solid #1c1b19}
+:global(.theme-ember) .uploadFooter button{background:#fa682a;color:#0f0e0d}
+:global(.theme-ember) .secondaryAction{border:1px solid #242320!important;background:#0f0e0d!important;color:#857e76!important}
+:global(.theme-ember) .materialFullPreview{background:#e9e8e6}
+:global(.theme-ember) .previewInfo{color:#928c84}
+:global(.theme-ember) .previewInfo small{color:#5c5852}
+:global(.theme-ember) .previewInfo a{color:#fa682a}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .materialBrowser{--edit-accent:#b23a0e;color:#3f3d39}
+:global(.theme-plaster) .materialToolbar b{font-weight:500}
+:global(.theme-plaster) .materialToolbar span{color:#9a978f}
+:global(.theme-plaster) .materialBrowser .addMaterial{border:1px solid #d6d5d2!important;background:#f2f2f1!important;color:#b23a0e!important}
+:global(.theme-plaster) .materials>label{color:#69675f}
+:global(.theme-plaster) .materials input:not([type=checkbox]),:global(.theme-plaster) .materials textarea,:global(.theme-plaster) .materials select{border:1px solid #e1e0de;background:#ffffff;color:#3f3d39;border-radius:12px}
+:global(.theme-plaster) .note{color:#96938b}
+:global(.theme-plaster) .error{color:#b23a0e}
+:global(.theme-plaster) .materialFilters>div{background:#efefed;border-radius:9px}
+:global(.theme-plaster) .materialBrowser .materialFilters button{color:#918e86!important}
+:global(.theme-plaster) .materialBrowser .materialFilters button[aria-pressed=true]{background:#ffffff!important;color:#3f3d39!important;box-shadow:0 1px 4px rgb(30 27 22 / 0.067)}
+:global(.theme-plaster) .materialSearch{color:#9f9d95}
+:global(.theme-plaster) .materialBrowser .materialSearch input{border-color:#e6e6e4!important;background:#ffffff!important}
+:global(.theme-plaster) .materialCount{color:#9e9c94}
+:global(.theme-plaster) .materialTiles li{border:1px solid #e4e3e1;background:#ffffff;border-radius:15px}
+:global(.theme-plaster) .materialTiles li[data-selected=true]{border-color:#ec5119;background:#f4f4f3}
+:global(.theme-plaster) .materialBrowser .materialThumb{background:#ececea!important;color:#7d7a71!important}
+:global(.theme-plaster) .videoPlaceholder{background:#eae9e8;color:#8e8c83}
+:global(.theme-plaster) .mediaType{background:rgb(255 255 255 / 0.929);color:#726f67;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .materialSelected{background:#b23a0e;color:#ffffff;border:2px solid #ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .materialBrowser .materialSelect input{accent-color:#b23a0e}
+:global(.theme-plaster) .materialDescription{color:#a3a19a}
+:global(.theme-plaster) .materialBrowser .emptyMaterials{border:1px dashed #d7d6d3!important;background:#f4f4f3!important;color:#9a9890!important}
+:global(.theme-plaster) .emptyMaterials b{color:#737068}
+:global(.theme-plaster) .emptyMaterials span{color:#a09e96}
+:global(.theme-plaster) .noMaterials{color:#9a9890}
+:global(.theme-plaster) .materialBrowser .noMaterials button{background:#efefed!important;color:#747169!important}
+:global(.theme-plaster) .sourceTabs{background:#efefed;border-radius:12px}
+:global(.theme-plaster) .materialUploadDialog .sourceTabs button{color:#96938b;border-radius:999px}
+:global(.theme-plaster) .materialUploadDialog .sourceTabs button[aria-pressed=true]{background:#ffffff;color:#3c3a36;box-shadow:0 1px 4px rgb(30 27 22 / 0.067)}
+:global(.theme-plaster) .materials .uploadDropzone{border:1px dashed #d4d3cf;background:#f4f4f3;color:#96938a;border-radius:16px}
+:global(.theme-plaster) .uploadDropzone:focus-within{outline:2px solid #b23a0e}
+:global(.theme-plaster) .uploadDropzone b{color:#747169}
+:global(.theme-plaster) .uploadDropzone small{color:#a6a49d}
+:global(.theme-plaster) .materials .dragging{border-color:#b23a0e;background:#f2f2f1}
+:global(.theme-plaster) .uploadFooter{border-top:1px solid #ebeae8}
+:global(.theme-plaster) .uploadFooter button{background:#b23a0e;color:#ffffff;border-radius:999px}
+:global(.theme-plaster) .secondaryAction{border:1px solid #e2e1df!important;background:#ffffff!important;color:#817e75!important}
+:global(.theme-plaster) .materialFullPreview{background:#1b1a19;border-radius:14px}
+:global(.theme-plaster) .previewInfo{color:#757269}
+:global(.theme-plaster) .previewInfo small{color:#a5a39b}
+:global(.theme-plaster) .previewInfo a{color:#b23a0e}
+/* plaster:end */

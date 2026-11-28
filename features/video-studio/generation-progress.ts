@@ -23,7 +23,9 @@ export function generationProgress(job: Pick<GenerationJob, "status" | "stage" |
   const stopped = ["failed", "unknown", "rejected"].includes(job.status);
   const review = job.status === "awaiting_review";
   const done = job.status === "completed";
-  const step = done ? 4 : review ? 3 : ["provider_completed", "downloading_video", "downloading_template", "uploading_template", "template_ready", "model_submitting"].includes(job.stage) ? 3 : (["lipsync_submitting", "lipsync_generating"].includes(job.stage) || job.stage.startsWith("backup_")) ? 2 : motionStages.has(job.stage) || job.stage.startsWith("h3_") ? 1 : 0;
+  // 旧记录或接口缺字段时 stage 可能为空，按「未开始」处理而不是让页面崩溃。
+  const stage = job.stage ?? "";
+  const step = done ? 4 : review ? 3 : ["provider_completed", "downloading_video", "downloading_template", "uploading_template", "template_ready", "model_submitting"].includes(stage) ? 3 : (["lipsync_submitting", "lipsync_generating"].includes(stage) || stage.startsWith("backup_")) ? 2 : motionStages.has(stage) || stage.startsWith("h3_") ? 1 : 0;
   const title = review ? "预览并确认你的形象" : job.status === "failed" ? "处理暂停，已保留完成的步骤" : job.status === "unknown" ? "提交结果待确认" : waitingForResult ? "生成耗时较长，等待结果" : waiting ? "等待继续处理" : job.status === "rejected" ? "形象未加入素材库" : done ? job.kind === "h3_template" ? "形象已准备好" : "视频已完成" : job.lipsync_routing?.long_wait && job.stage === "lipsync_generating" ? "生成耗时较长，继续查询原任务" : labels[job.stage] || "正在处理";
   const resumeLabel = waitingForResult ? "继续查询结果" : "继续处理";
   return { active, stopped, waiting, waitingForResult, review, done, step, title, resumeLabel, width: [8, 32, 62, 94, 100][step] };

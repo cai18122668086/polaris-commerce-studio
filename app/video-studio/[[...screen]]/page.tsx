@@ -4,10 +4,10 @@ import { VideoStudioGate } from "@/components/video-studio/video-studio-gate";
 
 export const metadata = {
   title: "视频创作空间",
-  description: "极光商绘视频创作空间：文案、声音与数字人口播。",
+  description: "极光商绘视频创作空间：文案、口播、剪辑、成片。",
 };
 
-const screens = new Set(["create", "avatars", "voices", "library", "works", "editing"]);
+const screens = new Set(["writing", "create", "avatars", "voices", "library", "works", "editing", "finish"]);
 
 export default async function VideoStudioPage({ params }: { params: Promise<{ screen?: string[] }> }) {
   const { screen = [] } = await params;

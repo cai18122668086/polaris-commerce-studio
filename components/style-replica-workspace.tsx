@@ -1,4 +1,5 @@
 "use client";
+import { apiFetch, apiUrl } from "@/lib/api/base-url";
 import { SettingField, ChoiceControl } from "@/components/creation-settings";
 
 
@@ -42,7 +43,7 @@ const STEPS = ["准备素材", "分析参考", "确认商品", "设计方案", "
 async function replicaRequest<T>(workspaceId: string, path: string, body?: unknown, signal?: AbortSignal): Promise<T> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (isLocalDevelopmentAuthEnabled()) headers["X-User-Id"] = LOCAL_DEV_AUTH_USER_ID;
-  const response = await fetch(`/api/v1/workspaces/${workspaceId}/replica${path}`, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: "include", signal });
+  const response = await apiFetch(`/api/v1/workspaces/${workspaceId}/replica${path}`, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify(body), credentials: "include", signal });
   const result = await response.json();
   if (!response.ok) throw new Error(result.error?.message ?? result.detail?.message ?? result.message ?? "服务暂时不可用，请稍后再试。");
   return result;
@@ -170,7 +171,7 @@ function ReplicaWorkspace({ requestedSessionId, requestedJobId }: { requestedSes
   const sourceImages = (key: "imageUrls" | "descImageUrls" | "skuImageUrls") => (product?.[key] ?? []).filter(src => !hiddenSources.includes(src));
   const sourcePreview = (src: string) => {
     const group = (["imageUrls", "descImageUrls", "skuImageUrls"] as const).find(key => product?.[key].includes(src));
-    return workspaceId && productDoc && group ? `/api/v1/workspaces/${encodeURIComponent(workspaceId)}/replica/products/${encodeURIComponent(productDoc.id)}/images/${group}/${product![group].indexOf(src)}` : "";
+    return workspaceId && productDoc && group ? apiUrl(`/api/v1/workspaces/${encodeURIComponent(workspaceId)}/replica/products/${encodeURIComponent(productDoc.id)}/images/${group}/${product![group].indexOf(src)}`) : "";
   };
   const activeImageTab = sourceImages(imageTab).length ? imageTab : (["imageUrls", "descImageUrls", "skuImageUrls"] as const).find(key => sourceImages(key).length) ?? imageTab;
   const hideSource = (src: string) => { setHiddenSources(current => current.includes(src) ? current : [...current, src]); setSelected(current => current.filter(value => value !== src)); };

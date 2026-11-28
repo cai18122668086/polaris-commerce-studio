@@ -9,7 +9,11 @@ from .config import Settings
 from .motion_library import atomic_json, sha256
 from .video_editing_pipeline import EditingFailure, decode_av, probe, run
 
-PROXY_MAX_EDGE = 640
+# Review proxy: 608x1080 for the native 1080x1920 master (phase 1 of
+# docs/video-editing-upgrade-plan-20261125.md); 360x640 hid motion detail.
+PROXY_MAX_EDGE = 1080
+PROXY_CRF = "22"
+PROXY_PRESET = "faster"
 TUTORIAL_PROXY_MAX_EDGE = 1280
 
 
@@ -66,8 +70,8 @@ def build_preview(
         else PROXY_MAX_EDGE
     )
     factor = min(1, max_edge / max(video["width"], video["height"]))
-    width = max(2, int(video["width"] * factor / 2) * 2)
-    height = max(2, int(video["height"] * factor / 2) * 2)
+    width = max(2, round(video["width"] * factor / 2) * 2)
+    height = max(2, round(video["height"] * factor / 2) * 2)
     preview = root / "outputs/preview.mp4"
     run(
         [
@@ -91,9 +95,9 @@ def build_preview(
             "-c:v",
             "libx264",
             "-preset",
-            "veryfast",
+            PROXY_PRESET,
             "-crf",
-            "27",
+            PROXY_CRF,
             "-pix_fmt",
             "yuv420p",
             "-c:a",
@@ -125,7 +129,7 @@ def build_preview(
         raise EditingFailure("EDITING_PREVIEW_AUDIO_CHANGED")
     decode_av(preview, root, settings, guard, "decode_preview")
     receipt = {
-        "version": "tengli.review-proxy/1",
+        "version": "tengli.review-proxy/2",
         "native_render_sha256": validation["sha256"],
         "sha256": sha256(preview),
         "duration_ms": validation["duration_ms"],

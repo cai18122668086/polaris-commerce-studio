@@ -1,4 +1,7 @@
 "use client";
+import { CostLine } from "./studio-content";
+import { billableLabel } from "@/features/video-studio/credit-notes";
+import { cloneEntry } from "@/features/video-studio/persona-rules";
 import { useRef, useState } from "react";
 import { AudioLines, Mic, Upload } from "lucide-react";
 import type { useVoiceClones } from "@/features/video-studio/voice-clones";
@@ -7,10 +10,11 @@ import styles from "./video-studio.module.css";
 import cloneStyles from "./voice-cloning.module.css";
 import { VoiceProgress } from "./voice-progress";
 import type { UploadProgress } from "@/lib/api/upload";
+import { mediaUrl } from "@/lib/api/base-url";
 type Clones = ReturnType<typeof useVoiceClones>;
 const statusLabel: Record<string, string> = { queued: "等待处理", submitting: "正在创建", processing: "审核处理中", ready: "可以使用", unknown: "结果待核对", failed: "未通过，请检查录音" };
 
-export function VoiceCloneDialog({ clones, onClose, onCreated }: { clones: Clones; onClose: () => void; onCreated: () => void }) {
+export function VoiceCloneDialog({ clones, onClose, onCreated, cost }: { clones: Clones; onClose: () => void; onCreated: () => void; cost?: { text: string; insufficient: boolean; credits: number | null } }) {
   const [name, setName] = useState(""); const [file, setFile] = useState<File>();
   const [consent, setConsent] = useState(false); const [busy, setBusy] = useState(false);
   const [error, setError] = useState(""); const [submittedId, setSubmittedId] = useState("");
@@ -57,7 +61,8 @@ export function VoiceCloneDialog({ clones, onClose, onCreated }: { clones: Clone
         <button type="button" className={styles.primaryButton} onClick={onClose}>查看我的声音</button>
       </> : <>
         <button type="button" className={styles.outlineButton} disabled={busy} onClick={onClose}>取消</button>
-        <button type="button" className={styles.primaryButton} disabled={busy || !name.trim() || !file || !consent || !clones.config?.available} onClick={() => { void submit(); }}>{busy ? "处理中…" : attempted ? "核对原提交" : "创建声音"}</button>
+        <CostLine note={cost} />
+        <button type="button" className={styles.primaryButton} disabled={busy || !!cost?.insufficient || !name.trim() || !file || !consent || !clones.config?.available} onClick={() => { void submit(); }}>{busy ? "处理中…" : attempted ? "再次确认（不会重复扣费）" : billableLabel("创建声音", cost?.credits)}</button>
       </>}
     </footer>
   </Dialog>;
@@ -66,15 +71,17 @@ export function VoiceCloneDialog({ clones, onClose, onCreated }: { clones: Clone
 
 export function MyVoices({ clones, onClone, onApply, onReload, onError }: { clones: Clones; onClone: () => void; onApply: (id: string) => void; onReload: () => Promise<unknown>; onError: (text: string) => void }) {
   const [busyId, setBusyId] = useState("");
+  const entry = cloneEntry(clones.config);
   const run = async (id: string, task: () => Promise<unknown>) => { if (busyId) return; setBusyId(id); try { await task(); await onReload(); } catch (reason) { onError(reason instanceof Error ? reason.message : "操作未完成，请重试。"); } finally { setBusyId(""); } };
   return <div className={cloneStyles.manager}><div className={cloneStyles.toolbar}><p>专属声音仅在你的账号与当前工作区内可见。</p><button type="button" className={styles.textButton} disabled={!!busyId} onClick={() => { void run("reload", clones.reload); }}>刷新列表</button></div>{clones.error && <p role="alert">{clones.error}</p>}
-    {!clones.voices.length ? <Empty icon={<Mic size={29} />} title="还没有你的专属声音" description="上传一段本人的清晰录音，创建你的视频配音声音。" action={<button type="button" className={styles.outlineButton} onClick={onClone}>克隆我的声音</button>} /> : <div className={cloneStyles.voices}>{clones.voices.map(voice => <article key={voice.id} className={cloneStyles.voice}>
+    {!clones.voices.length ? <Empty icon={<Mic size={29} />} title="还没有你的专属声音" description={entry.available ? "上传一段本人的清晰录音，创建你的视频配音声音。" : "声音克隆暂未开通，可以先用系统声音，效果同样自然。"} action={<button type="button" className={`${styles.outlineButton} ${entry.available ? "" : cloneStyles.unavailableAction}`} aria-disabled={!entry.available || undefined} title={entry.hint || undefined} onClick={() => { if (entry.available) onClone(); }}>{entry.available ? "克隆我的声音" : "克隆我的声音（暂未开通）"}</button>} /> : <div className={cloneStyles.voices}>{clones.voices.map(voice => <article key={voice.id} className={cloneStyles.voice}>
       <div className={cloneStyles.heading}><AudioLines size={25} /><div><b>{voice.name}</b><p>{statusLabel[voice.status] || "状态待确认"}</p></div></div>
       {["queued", "submitting", "processing", "unknown", "failed"].includes(voice.status) && <VoiceProgress status={voice.status} compact />}
-      {voice.preview_url && <audio controls preload="none" src={voice.preview_url} aria-label={`${voice.name}的缓存试听`} />}
+      {(voice.status === "failed" || voice.status === "unknown") && voice.error_message && <p role="status" className={cloneStyles.error}>{voice.error_message}</p>}
+      {voice.preview_url && <audio controls preload="none" src={mediaUrl(voice.preview_url)} aria-label={`${voice.name}的缓存试听`} />}
       {voice.preview_status === "unknown" && <p role="status">试听结果暂未确认，请稍后查看或联系客服。</p>}{voice.preview_status === "submitting" && <VoiceProgress status="submitting" preview compact />}
       <div className={cloneStyles.actions}><button type="button" className={styles.textButton} disabled={!!busyId || voice.status === "failed"} onClick={() => { void run(voice.id, () => clones.refresh(voice)); }}>查询状态</button>
-        {voice.status === "ready" && <><button type="button" className={styles.outlineButton} disabled={!!busyId || !clones.config?.available || voice.preview_status === "unknown" || voice.preview_status === "submitting"} onClick={() => { void run(voice.id, () => clones.preview(voice)); }}>{busyId === voice.id ? "正在处理…" : voice.preview_status === "ready" ? "刷新试听" : "生成试听"}</button><button type="button" className={styles.primaryButton} disabled={!clones.config?.available} onClick={() => onApply(voice.id)}>用于视频</button></>}
+        {voice.status === "ready" && <><button type="button" className={styles.outlineButton} disabled={!!busyId || !(clones.config?.synthesis_available ?? clones.config?.available) || voice.preview_status === "unknown" || voice.preview_status === "submitting"} onClick={() => { void run(voice.id, () => clones.preview(voice)); }}>{busyId === voice.id ? "正在处理…" : voice.preview_status === "ready" ? "刷新试听" : "生成试听"}</button><button type="button" className={styles.primaryButton} disabled={!(clones.config?.synthesis_available ?? clones.config?.available)} onClick={() => onApply(voice.id)}>用于视频</button></>}
       </div></article>)}</div>}
   </div>;
 }

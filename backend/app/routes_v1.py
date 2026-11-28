@@ -30,7 +30,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 from starlette.concurrency import run_in_threadpool
 
-from . import detail_fast, detail_fast_runtime, refined_detail
+from . import aurora_detail_authored, detail_fast, detail_fast_runtime, refined_detail
+from .admin_auth import is_admin
 from .amazon_visual_suite_provider import AMAZON_EXPECTED_ITEM_COUNT
 from .archive_response import ArchiveResponse, close_archive, open_archive
 from .aurora_execution_modes import is_parallel_aurora_mode, is_v20_aurora_mode
@@ -126,11 +127,13 @@ from .schemas_v1 import (
     DraftJobUpdate,
     ErrorResponse,
     FinalizeJobRequest,
+    FreeEditAllowance,
     JobCreate,
     JobDetailResponse,
     JobListResponse,
     LocalEditJobCreate,
     LocalEditReviewDecision,
+    MainImageMissingPagesResponse,
     ModelPoseAssetRequest,
     ModelPoseTransferJobCreate,
     PlanConfirmRequest,
@@ -157,6 +160,7 @@ from .services import (
     decode_cursor,
     encode_cursor,
     enforce_active_job_limit,
+    enforce_running_image_job_limit,
     estimate_job,
     get_ready_assets,
     get_workspace_asset,
@@ -493,11 +497,17 @@ def current_user(principal: PrincipalDependency) -> CurrentUserResponse:
     "/video-studio/access", response_model=VideoStudioAccessResponse, tags=["identity"]
 )
 def video_studio_access(
-    principal: VideoStudioDependency, response: Response
+    principal: VideoStudioDependency,
+    request: Request,
+    response: Response,
+    session: SessionDependency,
 ) -> VideoStudioAccessResponse:
     response.headers["Cache-Control"] = "private, no-store"
     response.headers["Vary"] = "Cookie"
-    return VideoStudioAccessResponse(user_id=principal.user_id)
+    # Review receipts, attempt counts and diagnostics are operator tools; the
+    # page shows them only to platform administrators.
+    internal = is_admin(principal, session, request.app.state.settings)
+    return VideoStudioAccessResponse(user_id=principal.user_id, internal_tools=internal)
 
 
 def runtime_status_response(
@@ -897,6 +907,10 @@ async def upload_asset(
     storage: ImageStorage = request.app.state.storage
     try:
         stored = await storage.save_validated(validated)
+    except UploadValidationError as exc:
+        # Full decoding at the persistence boundary can catch a truncated file
+        # that passed header verification. Validation runs before any write.
+        raise ApiError(status.HTTP_400_BAD_REQUEST, exc.code, exc.message) from exc
     except asyncio.CancelledError:
         await _finish_cleanup_before_cancellation(
             storage,
@@ -1048,6 +1062,61 @@ async def materialize_model_pose_asset(
     return response
 
 
+_LIBRARY_HELPER_ROLES = ("selection_mask", "amazon_contact_sheet")
+
+
+def _is_intermediate_only_asset(workspace_id: str) -> Any:
+    """Match pipeline intermediates and helper assets.
+
+    The asset library lists uploads and final results only: local-edit
+    raw/locked candidates, selection masks, QA contact sheets, catalog pose
+    references and outputs a job withheld from delivery (e.g. Amazon images
+    that failed QA, superseded edit versions) are hidden. An asset that a job
+    also delivers as an output stays visible.
+    """
+
+    def linked(*conditions: Any) -> Any:
+        return (
+            select(JobAssetRecord.id)
+            .where(
+                JobAssetRecord.workspace_id == workspace_id,
+                JobAssetRecord.asset_id == AssetRecord.id,
+                *conditions,
+            )
+            .exists()
+        )
+
+    delivered = linked(
+        JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+        JobAssetRecord.is_deliverable.is_(True),
+    )
+    return or_(
+        # Selection masks are drawing aids, never images a customer reuses.
+        AssetRecord.media_kind == AssetMediaKind.MASK.value,
+        and_(
+            ~delivered,
+            or_(
+                linked(
+                    JobAssetRecord.direction == JobAssetDirection.INTERMEDIATE.value
+                ),
+                # Helper outputs (e.g. the Amazon QA contact sheet) and masks.
+                linked(JobAssetRecord.role.in_(_LIBRARY_HELPER_ROLES)),
+                # Outputs the job withheld (QA-failed, failed or superseded).
+                linked(
+                    JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+                    JobAssetRecord.is_deliverable.is_(False),
+                ),
+                # Catalog pose references the system materialized for a job;
+                # a pose the customer uploaded stays in the library.
+                and_(
+                    AssetRecord.origin_kind == AssetOriginKind.IMPORTED.value,
+                    linked(JobAssetRecord.role == "pose_reference"),
+                ),
+            ),
+        ),
+    )
+
+
 @router.get(
     "/workspaces/{workspace_id}/assets",
     response_model=AssetListResponse,
@@ -1072,6 +1141,7 @@ def list_assets(
     filters: list[Any] = [
         AssetRecord.workspace_id == workspace.workspace_id,
         asset_is_available(),
+        ~_is_intermediate_only_asset(workspace.workspace_id),
     ]
     if origin_kind is not None:
         filters.append(AssetRecord.origin_kind == origin_kind.value)
@@ -1128,6 +1198,25 @@ def get_asset(
 ) -> AssetResponse:
     return asset_response(
         get_workspace_asset(session, workspace.workspace_id, asset_id)
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/assets/{asset_id}/free-edits",
+    response_model=FreeEditAllowance,
+    tags=["assets"],
+)
+def get_free_edit_allowance(
+    asset_id: str,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> FreeEditAllowance:
+    """How many free local edits remain for this image (3 per generated image)."""
+    from .free_edits import allowance
+
+    get_ready_assets(session, workspace.workspace_id, [asset_id])
+    return FreeEditAllowance.model_validate(
+        allowance(session, workspace.workspace_id, asset_id)
     )
 
 
@@ -1240,11 +1329,38 @@ def _signed_asset_url(
     return url
 
 
+def _is_failed_withheld_output(
+    session: Session, workspace_id: str, asset_id: str
+) -> bool:
+    """True for an output of a failed item (e.g. Amazon QA) never delivered."""
+
+    links = session.execute(
+        select(JobAssetRecord.is_deliverable, JobItemRecord.status)
+        .outerjoin(JobItemRecord, JobItemRecord.id == JobAssetRecord.job_item_id)
+        .where(
+            JobAssetRecord.workspace_id == workspace_id,
+            JobAssetRecord.asset_id == asset_id,
+            JobAssetRecord.direction == JobAssetDirection.OUTPUT.value,
+        )
+    ).all()
+    return (
+        bool(links)
+        and not any(deliverable for deliverable, _ in links)
+        and any(item_status == JobItemStatus.FAILED.value for _, item_status in links)
+    )
+
+
 def _asset_for_storage(
     session: Session, workspace_id: str, asset_id: str
 ) -> AssetRecord:
     """Return loaded scalar metadata without holding a connection during I/O."""
     asset = get_workspace_asset(session, workspace_id, asset_id)
+    if _is_failed_withheld_output(session, workspace_id, asset.id):
+        raise ApiError(
+            status.HTTP_409_CONFLICT,
+            "ASSET_NOT_DELIVERABLE",
+            "这张图未通过质检，不提供查看或下载。",
+        )
     from .local_edit_billing import require_image_access
     require_image_access(session, asset)
     session.expunge(asset)
@@ -1555,9 +1671,11 @@ def create_job(
     session.flush()
     _add_items_and_inputs(session, job, asset_roles)
     if isinstance(payload, LocalEditJobCreate):
+        from . import free_edits
         from .replica_image_edits import register_edit
 
         register_edit(session, job)
+        free_edits.apply(session, job)
     if payload.intent == "submit":
         _reserve_real_provider_job_if_enabled(
             session,
@@ -1695,7 +1813,7 @@ def list_jobs(
                 item,
                 output_asset_count=output_summaries.get(item.id, (0, None))[0],
                 primary_output_asset_id=output_summaries.get(item.id, (0, None))[1],
-                generated_set_complete=_is_audit_only_generated_set(
+                audit_only_set_failure=_is_audit_only_generated_set(
                     item,
                     item_groups.get(item.id, []),
                     output_summaries.get(item.id, (0, None))[0],
@@ -1725,6 +1843,52 @@ def get_job(
 ) -> JobDetailResponse:
     return job_detail_response(
         session, get_workspace_job(session, workspace.workspace_id, job_id)
+    )
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/main-image/missing-pages",
+    response_model=MainImageMissingPagesResponse,
+    tags=["jobs"],
+)
+def get_main_image_missing_pages(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> MainImageMissingPagesResponse:
+    """Reconciled missing pages and the charge rule shown before a redo."""
+
+    from .aurora_main_image_missing_pages import reconcile
+
+    return MainImageMissingPagesResponse.model_validate(reconcile(
+        session,
+        get_workspace_job(session, workspace.workspace_id, job_id),
+        request.app.state.settings.aurora_work_root,
+    ))
+
+
+@router.get(
+    "/workspaces/{workspace_id}/jobs/{job_id}/detail/missing-pages",
+    response_model=MainImageMissingPagesResponse,
+    tags=["jobs"],
+)
+def get_detail_missing_pages(
+    job_id: str,
+    request: Request,
+    workspace: WorkspaceDependency,
+    session: SessionDependency,
+) -> MainImageMissingPagesResponse:
+    """Detail 精致版: missing screens and the charge rule shown before a redo."""
+
+    from .detail_missing_pages import reconcile
+
+    return MainImageMissingPagesResponse.model_validate(
+        reconcile(
+            session,
+            get_workspace_job(session, workspace.workspace_id, job_id),
+            request.app.state.settings.aurora_work_root,
+        )
     )
 
 
@@ -2008,6 +2172,7 @@ def update_draft_job(
                 PIPELINE_VERSION,
                 refined_detail.PIPELINE_VERSION,
                 detail_fast.PIPELINE_VERSION,
+                aurora_detail_authored.PIPELINE_VERSION,
             }:
                 updated_configuration["domestic_detail_pipeline"] = pipeline
                 # Skill selection is immutable once the job has been created.
@@ -2371,9 +2536,16 @@ def retry_job(
                 "job_id": job_id,
                 **payload.model_dump(
                     mode="json",
-                    exclude={"local_edit_instruction"}
-                    if payload.local_edit_instruction is None
-                    else set(),
+                    exclude=(
+                        {"local_edit_instruction"}
+                        if payload.local_edit_instruction is None
+                        else set()
+                    )
+                    | (
+                        {"confirm_missing_pages"}
+                        if payload.confirm_missing_pages is None
+                        else set()
+                    ),
                 ),
             }
         ),
@@ -2401,6 +2573,20 @@ def retry_job(
                 "请先恢复原任务，再修改要求生成新版本。",
             )
 
+    if payload.confirm_missing_pages is not None:
+        from . import detail_missing_pages
+        from .aurora_main_image_missing_pages import confirm_and_release
+
+        if detail_missing_pages.applicable(source):
+            confirm_and_release = detail_missing_pages.confirm_and_release
+        if payload.scope != RetryScope.FAILED:
+            raise ApiError(422, "VALIDATION_ERROR", "补齐缺页只能重做失败的页。")
+        confirm_and_release(
+            session,
+            source,
+            payload.confirm_missing_pages,
+            request.app.state.settings.aurora_work_root,
+        )
     replan_main_image = require_recoverable_plan(
         session, source, allow_replanning=payload.scope == RetryScope.FAILED
     )
@@ -2445,9 +2631,11 @@ def retry_job(
     _copy_job_relations_for_retry(session, source, retried, selected)
     session.flush()
     if retried.type == JobType.LOCAL_EDIT.value:
+        from . import free_edits
         from .replica_image_edits import register_edit
 
         register_edit(session, retried)
+        free_edits.apply(session, retried)
     if replica_authority is not None:
         bind_retry(session, source, retried, replica_authority)
     if manual_refined_revision:
@@ -3264,6 +3452,8 @@ def confirm_plan(
             "任务当前状态不允许确认计划。",
         )
     _ensure_detail_skill_provider_enabled(request, job)
+    # Confirming starts generation: apply the running-job cap here as well.
+    enforce_running_image_job_limit(session, workspace.workspace_id)
     automatic_delivery_authorization = None
     auto_fields_supplied = any(
         value is not None
@@ -4646,6 +4836,9 @@ def _new_job_from_payload(
                     "domestic_detail_pipeline": (
                         detail_fast.PIPELINE_VERSION
                         if payload.configuration.detail_speed == "fast"
+                        else aurora_detail_authored.PIPELINE_VERSION
+                        if payload.configuration.detail_skill == "refined"
+                        and aurora_detail_authored.enabled()
                         else refined_detail.PIPELINE_VERSION
                         if payload.configuration.detail_skill == "refined"
                         else PIPELINE_VERSION
@@ -4664,6 +4857,16 @@ def _new_job_from_payload(
         queued_at=utc_now() if is_submit else None,
         history_expires_at=None if is_submit else utc_now() + timedelta(days=30),
     )
+    if (
+        job.configuration.get("domestic_detail_pipeline")
+        == aurora_detail_authored.PIPELINE_VERSION
+    ):
+        from .new_detail_skill_provider import AdapterValidationError
+
+        try:
+            aurora_detail_authored.delivery_size(job.configuration["settings"])
+        except AdapterValidationError as exc:
+            raise ApiError(422, exc.code, str(exc)) from exc
     return job, asset_roles
 
 
@@ -5083,18 +5286,18 @@ def _validate_domestic_detail_retry(
     ):
         return
     if detail_fast_runtime.is_independent(source.configuration):
-        uncertain_item_id = session.scalar(
-            select(JobItemRecord.id)
-            .where(
+        from .detail_missing_pages import released
+
+        uncertain_ids = session.scalars(
+            select(JobItemRecord.id).where(
                 JobItemRecord.job_id == source.id,
                 JobItemRecord.id.in_(selected),
                 JobItemRecord.error_code.in_(
                     ("PROVIDER_OUTCOME_UNKNOWN", "IMAGE_RESULT_DOWNLOAD_UNCONFIRMED")
                 ),
             )
-            .limit(1)
-        )
-        if uncertain_item_id is not None:
+        ).all()
+        if uncertain_ids and not released(source, list(uncertain_ids)):
             raise ApiError(
                 409,
                 "PROVIDER_OUTCOME_UNKNOWN",
@@ -5407,7 +5610,9 @@ def _copy_job_relations_for_retry(
         if source_plan is not None and source_plan.confirmed_at is not None:
             copied_payload = dict(source_plan.payload)
             copied_payload["state"] = "confirmed"
-            if source_plan.schema_version == "aurora-main-image-native-fast-plan-v1":
+            from .aurora_main_image_native_fast import FAST_PLAN_SCHEMAS
+
+            if source_plan.schema_version in FAST_PLAN_SCHEMAS:
                 for key in (
                     "_native_final_job_id", "_native_final_session",
                     "_native_final_manifest", "technical_delivery",

@@ -157,6 +157,12 @@ class Journal:
             self.lock.unlink()
 
 
+def _route_parked(route: Any) -> bool:
+    from .xinghe_agent import PLANNER_ROUTE_BREAKER
+
+    return PLANNER_ROUTE_BREAKER.is_open(route)
+
+
 def _not_sent(code: str) -> PlannerCallResult:
     from .xinghe_agent import PlannerCallResult, normalize_usage
 
@@ -277,6 +283,23 @@ async def recover(
             remaining = deadline - time.monotonic()
             if remaining <= 0:
                 break
+            if (
+                ordinal < len(schedule)
+                and request.planning_profile not in NATIVE_PLANNER_PROFILES
+                and _route_parked(route)
+            ):
+                # A route that keeps failing before any HTTP response is parked
+                # by the shared circuit breaker; go straight to the next one.
+                # Native profiles keep their strict per-route dispatch proof.
+                records.append(
+                    {
+                        "ordinal": ordinal,
+                        "route": descriptors[index],
+                        "skipped": "route_circuit_open",
+                        "transport_attempts": 0,
+                    }
+                )
+                continue
             child = copy(gateway)
             child.planner_recovery_enabled = False
             child._provider_routes = {route.name: route}

@@ -127,3 +127,167 @@
 .loginPreview span { color:#5d6d86; font-size:10px; line-height:1.5; }
 .accountAction:hover { color:#315edb; border-color:#b8c9f0; }
 .accountAction:disabled { opacity:.5; cursor:not-allowed; }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .page{color:#e9e8e6}
+:global(.theme-ember) .eyebrow{color:#a39e97}
+:global(.theme-ember) .hero p{color:#969088}
+:global(.theme-ember) .heroNote{border:1px solid #262422;color:#a39e97;background:rgb(255 250 244 / 0.025);border-radius:18px}
+:global(.theme-ember) .heroNote small{color:#908a82}
+:global(.theme-ember) .card{border:1px solid #23211f;background:rgb(255 250 244 / 0.04);box-shadow:0 8px 28px rgb(0 0 0 / 0.09)}
+:global(.theme-ember) .step{color:#a39e97;background:rgb(255 250 244 / 0.06);border-radius:12px;font-weight:500}
+:global(.theme-ember) .cardHeading p{color:#807a72}
+:global(.theme-ember) .headingIcon{color:#6c6760}
+:global(.theme-ember) .liveBadge,:global(.theme-ember) .resultCount{color:#9e9891;background:rgb(255 250 244 / 0.025);font-weight:500}
+:global(.theme-ember) .liveBadge span{background:#e6e2db;box-shadow:0 0 0 4px rgb(0 0 0 / 0.234)}
+:global(.theme-ember) .form label,:global(.theme-ember) .inlineForm label{color:#aca7a1;font-weight:500}
+:global(.theme-ember) .form select,:global(.theme-ember) .form input,:global(.theme-ember) .inlineForm select,:global(.theme-ember) .inlineForm input{border:1px solid #292725;color:#e9e8e6;background:rgb(255 250 244 / 0.04);border-radius:14px}
+:global(.theme-ember) .form select:focus,:global(.theme-ember) .form input:focus,:global(.theme-ember) .inlineForm select:focus,:global(.theme-ember) .inlineForm input:focus{border-color:#66615b;box-shadow:0 0 0 3px rgb(0 0 0 / 0.18)}
+:global(.theme-ember) .urlInput span{color:#635e58}
+:global(.theme-ember) .outlineButton{color:#a39e97;border:1px solid #292724;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .outlineButton:hover{border-color:#504c47;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .iconButton{color:#969088;border:1px solid #292725;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .iconButton:hover{color:#a39e97;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .primaryButton{color:#0f0e0d;background:#e6e2db;box-shadow:0 6px 15px rgb(0 0 0 / 0.324)}
+:global(.theme-ember) .primaryButton:hover{background:#e6e2db}
+:global(.theme-ember) .inlineForm{border:1px solid #23221f;background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .accountHint{color:#a8a39d;background:rgb(255 250 244 / 0.025);border-radius:12px}
+:global(.theme-ember) .checkbox input{accent-color:#a39e97}
+:global(.theme-ember) .successMessage{color:#9e9891;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .errorMessage{color:#fa682a;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .taskRow{color:#e9e8e6;background:rgb(255 250 244 / 0.025);border-radius:15px}
+:global(.theme-ember) .taskRow:hover,:global(.theme-ember) .taskRowActive{border-color:#373431;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .taskRowMain strong{font-weight:500}
+:global(.theme-ember) .taskRowMain small{color:#777169}
+:global(.theme-ember) .tone-blue{color:#a39e97;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .tone-green{color:#9e9891;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .tone-amber{color:#dc7f06;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .tone-red{color:#fa682a;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .tone-muted{color:#928c84;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .rowChevron{color:#605b55}
+:global(.theme-ember) .empty{color:#625d57}
+:global(.theme-ember) .empty strong{color:#a09b94}
+:global(.theme-ember) .statusHeader > span{color:#a39e97;font-weight:500}
+:global(.theme-ember) .statusHeader strong{color:#8b857d;font-weight:500}
+:global(.theme-ember) .progress{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .progress span{background:linear-gradient(90deg,#e6e2db,#645f58)}
+:global(.theme-ember) .metaGrid{border-top:1px solid #1c1b19;border-bottom:1px solid #1c1b19}
+:global(.theme-ember) .metaGrid dt{color:#66615a}
+:global(.theme-ember) .metaGrid dd{color:#bbb8b3;font-weight:500}
+:global(.theme-ember) .taskError{color:#fa682a;background:rgb(255 250 244 / 0.025);border-radius:14px}
+:global(.theme-ember) .taskError span{color:#fa682a}
+:global(.theme-ember) .subsection h3{color:#aba6a0}
+:global(.theme-ember) .timeline li:not(:last-child)::before{background:rgb(21 20 19 / 0.9);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .timelineIcon{color:#817b73;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .timeline li strong{color:#aca7a1}
+:global(.theme-ember) .timeline li small{color:#605b55}
+:global(.theme-ember) .mutedText{color:#605b55}
+:global(.theme-ember) .productSummary{background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .resultPlatform{color:#a39e97}
+:global(.theme-ember) .productSummary p{color:#888279}
+:global(.theme-ember) .productSummary code{color:#948e86;background:rgb(255 250 244 / 0.025);border-radius:8px}
+:global(.theme-ember) .warningList span{color:#dc7f06;background:rgb(255 250 244 / 0.025);border-radius:11px}
+:global(.theme-ember) .assetCard{border:1px solid #23211f;color:#b5b1ab;background:rgb(255 250 244 / 0.04);border-radius:15px}
+:global(.theme-ember) .assetCard:hover{border-color:#504c47;box-shadow:0 4px 14px rgb(0 0 0 / 0.144)}
+:global(.theme-ember) .assetMedia{color:#59554f;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .assetCard > span{font-weight:500}
+:global(.theme-ember) .assetCard > small{color:#605b55}
+:global(.theme-ember) .noAssets{color:#6e6962;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .resultLink{color:#a39e97}
+:global(.theme-ember) .imageGroup{border-top:1px solid #1c1b19}
+:global(.theme-ember) .imageGroup h3,:global(.theme-ember) .skuGroup h3{color:#d8d6d3}
+:global(.theme-ember) .imageGroup h3 span{color:#807a72}
+:global(.theme-ember) .skuGroup{background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .skuOptions span{border:1px solid #252320;background:rgb(255 250 244 / 0.04);border-radius:9px}
+:global(.theme-ember) .skuGroup p{color:#969088}
+:global(.theme-ember) .accountList{border:1px solid #1c1b19;background:rgb(255 250 244 / 0.025);border-radius:15px}
+:global(.theme-ember) .accountItem strong{color:#aba6a0}
+:global(.theme-ember) .accountItem span,:global(.theme-ember) .accountItem small{color:#605b55}
+:global(.theme-ember) .accountAction{border:1px solid #292725;color:#948e87;background:rgb(255 250 244 / 0.04);border-radius:9px}
+:global(.theme-ember) .loginPreview{border:1px solid #242320;background:rgb(255 250 244 / 0.025);border-radius:11px}
+:global(.theme-ember) .loginPreview img{background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .loginPreview span{color:#9e9992}
+:global(.theme-ember) .accountAction:hover{color:#a39e97;border-color:#3d3a36}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{color:#201f1d}
+:global(.theme-plaster) .eyebrow{color:#1a1a19}
+:global(.theme-plaster) .hero p{color:#726f67}
+:global(.theme-plaster) .heroNote{border:1px solid #e0dfdd;color:#1a1a19;background:#f2f1f0;border-radius:18px}
+:global(.theme-plaster) .heroNote small{color:#1a1a19}
+:global(.theme-plaster) .card{border:1px solid #e4e3e1;background:#ffffff;box-shadow:0 8px 28px rgb(30 27 22 / 0.05)}
+:global(.theme-plaster) .step{color:#1a1a19;background:#ebeae9;border-radius:12px;font-weight:500}
+:global(.theme-plaster) .cardHeading p{color:#858278}
+:global(.theme-plaster) .headingIcon{color:#1a1a19}
+:global(.theme-plaster) .liveBadge,:global(.theme-plaster) .resultCount{color:#1d7b55;background:#f1f1f0;font-weight:500}
+:global(.theme-plaster) .liveBadge span{background:#27ae70;box-shadow:0 0 0 4px rgb(30 27 22 / 0.13)}
+:global(.theme-plaster) .form label,:global(.theme-plaster) .inlineForm label{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .form select,:global(.theme-plaster) .form input,:global(.theme-plaster) .inlineForm select,:global(.theme-plaster) .inlineForm input{border:1px solid #d9d8d5;color:#201f1d;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .form select:focus,:global(.theme-plaster) .form input:focus,:global(.theme-plaster) .inlineForm select:focus,:global(.theme-plaster) .inlineForm input:focus{border-color:#1a1a19;box-shadow:0 0 0 3px rgb(30 27 22 / 0.1)}
+:global(.theme-plaster) .urlInput span{color:#9f9c95}
+:global(.theme-plaster) .outlineButton{color:#1a1a19;border:1px solid #d9d8d5;background:#f2f1f0}
+:global(.theme-plaster) .outlineButton:hover{border-color:#1a1a19;background:#ededeb}
+:global(.theme-plaster) .iconButton{color:#726f67;border:1px solid #d9d8d5;background:#ffffff}
+:global(.theme-plaster) .iconButton:hover{color:#1a1a19;background:#f3f3f2}
+:global(.theme-plaster) .primaryButton{color:#ffffff;background:#1a1a19;box-shadow:0 6px 15px rgb(30 27 22 / 0.18)}
+:global(.theme-plaster) .primaryButton:hover{background:#1a1a19}
+:global(.theme-plaster) .inlineForm{border:1px solid #e3e2e0;background:#f3f3f2;border-radius:16px}
+:global(.theme-plaster) .accountHint{color:#1a1a19;background:#f1f0ef;border-radius:12px}
+:global(.theme-plaster) .checkbox input{accent-color:#1a1a19}
+:global(.theme-plaster) .successMessage{color:#1d7b55;background:#f1f1f0}
+:global(.theme-plaster) .errorMessage{color:#b23a0e;background:#efefed}
+:global(.theme-plaster) .taskRow{color:#201f1d;background:#f3f3f2;border-radius:15px}
+:global(.theme-plaster) .taskRow:hover,:global(.theme-plaster) .taskRowActive{border-color:#cac9c4;background:#f1f0ef}
+:global(.theme-plaster) .taskRowMain strong{font-weight:500}
+:global(.theme-plaster) .taskRowMain small{color:#8d8a81}
+:global(.theme-plaster) .tone-blue{color:#1a1a19;background:#ebeae9}
+:global(.theme-plaster) .tone-green{color:#1d7b55;background:#efeeed}
+:global(.theme-plaster) .tone-amber{color:#b4610f;background:#f0efee}
+:global(.theme-plaster) .tone-red{color:#b23a0e;background:#eeedec}
+:global(.theme-plaster) .tone-muted{color:#75726a;background:#ebebe9}
+:global(.theme-plaster) .rowChevron{color:#a2a098}
+:global(.theme-plaster) .empty{color:#a09e96}
+:global(.theme-plaster) .empty strong{color:#69675f}
+:global(.theme-plaster) .statusHeader > span{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .statusHeader strong{color:#7b786f;font-weight:500}
+:global(.theme-plaster) .progress{background:#ebeae8}
+:global(.theme-plaster) .progress span{background:linear-gradient(90deg,#1a1a19,#1a1a19)}
+:global(.theme-plaster) .metaGrid{border-top:1px solid #ebeae8;border-bottom:1px solid #ebeae8}
+:global(.theme-plaster) .metaGrid dt{color:#9c9a92}
+:global(.theme-plaster) .metaGrid dd{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .taskError{color:#b23a0e;background:#f0f0ef;border-radius:14px}
+:global(.theme-plaster) .taskError span{color:#b23a0e}
+:global(.theme-plaster) .subsection h3{color:#615f58}
+:global(.theme-plaster) .timeline li:not(:last-child)::before{background:#e4e3e1;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .timelineIcon{color:#1a1a19;background:#ffffff}
+:global(.theme-plaster) .timeline li strong{color:#1a1a19}
+:global(.theme-plaster) .timeline li small{color:#a2a098}
+:global(.theme-plaster) .mutedText{color:#a2a098}
+:global(.theme-plaster) .productSummary{background:#f3f3f2;border-radius:16px}
+:global(.theme-plaster) .resultPlatform{color:#1a1a19}
+:global(.theme-plaster) .productSummary p{color:#7e7b72}
+:global(.theme-plaster) .productSummary code{color:#737168;background:#ebebe9;border-radius:8px}
+:global(.theme-plaster) .warningList span{color:#a65a0d;background:#f2f2f1;border-radius:11px}
+:global(.theme-plaster) .assetCard{border:1px solid #e4e3e1;color:#1a1a19;background:#ffffff;border-radius:15px}
+:global(.theme-plaster) .assetCard:hover{border-color:#1a1a19;box-shadow:0 4px 14px rgb(30 27 22 / 0.08)}
+:global(.theme-plaster) .assetMedia{color:#a8a69f;background:#eeeeec}
+:global(.theme-plaster) .assetCard > span{font-weight:500}
+:global(.theme-plaster) .assetCard > small{color:#a2a098}
+:global(.theme-plaster) .noAssets{color:#95928a;background:#f3f3f2}
+:global(.theme-plaster) .resultLink{color:#1a1a19}
+:global(.theme-plaster) .imageGroup{border-top:1px solid #ebeae8}
+:global(.theme-plaster) .imageGroup h3,:global(.theme-plaster) .skuGroup h3{color:#403e3a}
+:global(.theme-plaster) .imageGroup h3 span{color:#858278}
+:global(.theme-plaster) .skuGroup{background:#f3f3f2;border-radius:16px}
+:global(.theme-plaster) .skuOptions span{border:1px solid #e1e1de;background:#ffffff;border-radius:9px}
+:global(.theme-plaster) .skuGroup p{color:#726f67}
+:global(.theme-plaster) .accountList{border:1px solid #ebeae8;background:#f5f5f4;border-radius:15px}
+:global(.theme-plaster) .accountItem strong{color:#615f58}
+:global(.theme-plaster) .accountItem span,:global(.theme-plaster) .accountItem small{color:#a2a098}
+:global(.theme-plaster) .accountAction{border:1px solid #d9d8d5;color:#737068;background:#ffffff;border-radius:9px}
+:global(.theme-plaster) .loginPreview{border:1px solid #e2e1df;background:#f3f2f1;border-radius:11px}
+:global(.theme-plaster) .loginPreview img{background:#ffffff}
+:global(.theme-plaster) .loginPreview span{color:#1a1a19}
+:global(.theme-plaster) .accountAction:hover{color:#1a1a19;border-color:#c4c2bd}
+/* plaster:end */

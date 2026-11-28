@@ -372,3 +372,32 @@ def test_provider_does_not_inherit_numeric_claims_from_reference(
     )
     assert ("validation_error" not in result) is valid
     assert receipt["usage"]["total_tokens"] == 5 and len(seen) == 1
+
+
+def test_extract_poll_holds_no_db_connection_while_sleeping(assistance, monkeypatch):
+    client, _, service, root, pid = assistance
+    pool = client.app.state.engine.pool
+    checked_out = []
+    states = iter(["running", "running", "succeeded"])
+
+    def poll(task_id):
+        service.calls.append(("poll", task_id))
+        return {
+            "status": next(states),
+            "results": {
+                "text": "参考视频的完整语音原文。",
+                "title": "参考来源",
+                "segments": [{"start": 0, "end": 2, "text": "参考原文"}],
+            },
+        }
+
+    monkeypatch.setattr(service, "extract_status", poll)
+    monkeypatch.setattr(
+        "app.video_assistance.time.sleep",
+        lambda _: checked_out.append(pool.checkedout()),
+    )
+    client.post(root + "/assistance-tasks", json=body(pid, "extract"))
+    task = jobs(client, root, pid)[0]
+    assert task["status"] == "completed"
+    assert checked_out == [0, 0]
+    assert len([x for x in service.calls if x[0] == "poll"]) == 3

@@ -33,7 +33,10 @@ export function mapApiError(error: unknown, response?: Response): ApiError {
       kind: "http",
       status: response.status,
       code: payload?.code ?? `HTTP_${response.status}`,
-      message: payload?.message ?? "请求未能完成。",
+      // Older backends phrase the credit shortfall as 「额度」; customers only know 「积分」.
+      message: response.status === 402 && (!payload?.message || payload.message.includes("额度"))
+        ? "当前可用积分不足，请充值积分后再试。"
+        : payload?.message ?? "请求未能完成。",
       details: payload?.details,
       requestId:
         payload?.request_id ?? response.headers.get("X-Request-Id") ?? undefined,

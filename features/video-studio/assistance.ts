@@ -91,7 +91,7 @@ export function useVideoAssistance(userId: string, workspaceId: string, projectI
     submitOnce(body.kind, { ...body, request_id: crypto.randomUUID() }, async pending =>
       unwrapApiResponse(await apiClient.POST(`${root}/assistance-tasks`, { ...options(), body: pending })) as AssistanceJob);
   const submitBenchmark = (body: Omit<BenchmarkSubmission, "request_id">) =>
-    submitOnce("benchmark_search", { ...body, request_id: crypto.randomUUID() }, async pending =>
+    submitOnce("benchmark_search", { platform: "douyin" as const, ...body, request_id: crypto.randomUUID() }, async pending =>
       unwrapApiResponse(await apiClient.POST(`${root}/benchmark-searches`, { ...options(), body: pending })) as AssistanceJob);
   const nextBenchmarkPage = async (id: string) => {
     const job = unwrapApiResponse(await apiClient.POST(`${root}/benchmark-searches/{task_id}/next`, {

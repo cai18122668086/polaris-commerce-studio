@@ -31,6 +31,7 @@ export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
       mainImage: "800 × 800（1:1）",
       detailImage: "750px 宽 · 建议分段输出",
       note: "适合品牌旗舰店与完整卖点叙事",
+      sizePresets: [{ value: "750x1000", label: "750 × 1000 · 手机详情" }, { value: "1440x1920", label: "1440 × 1920 · 高清" }],
     },
     {
       id: "jd",
@@ -41,6 +42,7 @@ export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
       mainImage: "800 × 800（1:1）",
       detailImage: "750px 宽 · 建议分段输出",
       note: "突出参数、性能与购买决策信息",
+      sizePresets: [{ value: "750x1000", label: "750 × 1000 · 手机详情" }, { value: "990x1320", label: "990 × 1320 · 电脑端" }, { value: "1440x1920", label: "1440 × 1920 · 高清" }],
     },
     {
       id: "taobao",
@@ -51,6 +53,7 @@ export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
       mainImage: "800 × 800（1:1）",
       detailImage: "750px 宽 · 单段 800–1500px",
       note: "适合灵活的商品卖点和场景表达",
+      sizePresets: [{ value: "750x1000", label: "750 × 1000 · 手机详情" }, { value: "1440x1920", label: "1440 × 1920 · 高清" }],
     },
     {
       id: "pdd",
@@ -61,6 +64,7 @@ export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
       mainImage: "750 × 750（1:1）",
       detailImage: "750px 宽 · 转化优先",
       note: "强调价格利益点与核心功能",
+      sizePresets: [{ value: "750x1000", label: "750 × 1000 · 手机详情" }, { value: "1440x1920", label: "1440 × 1920 · 高清" }],
     },
     {
       id: "douyin",
@@ -71,6 +75,7 @@ export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
       mainImage: "800 × 800 / 750 × 1000",
       detailImage: "750px 宽 · 3:4 卖点图",
       note: "适合短节奏、强视觉的卖点呈现",
+      sizePresets: [{ value: "750x1000", label: "750 × 1000 · 卖点图" }, { value: "1080x1440", label: "1080 × 1440" }, { value: "1440x1920", label: "1440 × 1920 · 高清" }],
     },
     {
       id: "xiaohongshu",
@@ -81,6 +86,7 @@ export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
       mainImage: "1242 × 1660（3:4）",
       detailImage: "1080 × 1440 · 分页内容",
       note: "强调生活方式、体验与口碑表达",
+      sizePresets: [{ value: "1080x1440", label: "1080 × 1440 · 分页内容" }, { value: "1242x1656", label: "1242 × 1656" }, { value: "1440x1920", label: "1440 × 1920 · 高清" }],
     },
   ],
   international: [
@@ -89,7 +95,7 @@ export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
       name: "Amazon",
       shortName: "A",
       region: "international",
-      format: "Listing + A+",
+      format: "商品刊登图 + A+ 页面",
       mainImage: "1600 × 1600（1:1）",
       detailImage: "副图同尺寸 · A+ 按模块尺寸",
       note: "主图与副图使用 1600 × 1600；A+ 不预设固定尺寸",
@@ -100,7 +106,7 @@ export const marketplaceGroups: Record<MarketRegion, Marketplace[]> = {
       name: "eBay",
       shortName: "e",
       region: "international",
-      format: "Listing 商品图",
+      format: "商品刊登图",
       mainImage: "1600 × 1600（推荐）",
       detailImage: "副图同尺寸",
       note: "主图与副图使用 1600 × 1600",

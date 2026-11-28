@@ -34,7 +34,7 @@ ALLOWED_ACTIONS = {
     "AWAITING_AUTHORIZATION": ["compile", "authorize", "restart-campaign", "inspect"],
     "AUTHORIZED": ["generate-next", "apply-user-adjustment", "restart-campaign", "inspect"],
     "AWAITING_GENERATED_ASSET": ["record-generation", "recover-generation", "inspect"],
-    "AWAITING_VISUAL_AUDIT": ["audit-current", "restart-campaign", "inspect"],
+    "AWAITING_VISUAL_AUDIT": ["audit-current", "accept-repair", "restart-campaign", "inspect"],
     "REPAIR_REQUIRED": ["prepare-repair", "apply-user-adjustment", "restart-campaign", "inspect"],
     "AWAITING_SEARCH_CALIBRATION": ["calibrate-search", "restart-campaign", "inspect"],
     "AWAITING_STYLE_CALIBRATION": ["calibrate-style", "restart-campaign", "inspect"],
@@ -198,7 +198,12 @@ def generate_next(session_path: str, output_path: str | None) -> dict[str, Any]:
     elif page["generation_mode"] == "PRODUCT_PRESERVING_EDIT":
         source = evidence_by_id[page["edit_target_evidence_id"]]
         edit_target = {"path": source["path"], "evidence_id": source["evidence_id"], "role": "PRODUCT_IDENTITY_AUTHORITY", "identity_authority": True}
-    if edit_target and edit_target.get("role") in {"REPAIR_CANVAS_ONLY", "USER_ADJUSTMENT_CANVAS"}:
+    if edit_target and edit_target.get("role") == "REPAIR_CANVAS_ONLY":
+        # Polaris patch: the repair canvas comes first, followed by the product
+        # identity references so the label and package are restored from the
+        # original product instead of being redrawn from the failed draft.
+        imagegen_reference_paths = list(dict.fromkeys([edit_target["path"], *[item["path"] for item in references]]))
+    elif edit_target and edit_target.get("role") == "USER_ADJUSTMENT_CANVAS":
         imagegen_reference_paths = [edit_target["path"]]
     else:
         ordered_paths = ([edit_target["path"]] if edit_target else []) + [item["path"] for item in references]
@@ -347,6 +352,73 @@ def audit_current(session_path: str, judgment_path: str) -> dict[str, Any]:
             _advance(session, page_index, "audit-current-automatic-repair-selected-with-residuals")
     _save(session_path, session)
     return _result(session, visual_audit=audit)
+
+
+def accept_repair(session_path: str, check_path: str) -> dict[str, Any]:
+    """Polaris patch: accept an automatic repair after a direct-pixel identity check.
+
+    A repaired page is accepted whatever its full re-audit says (see
+    ``audit_current``), so a second full audit only discloses residuals.  This
+    command replaces it with a narrower direct-pixel check of the product label
+    and identity on both the pre-repair draft and the repair.  When the repair
+    damaged the label or identity and the pre-repair draft did not, the
+    pre-repair draft is delivered instead.  The search page keeps its full
+    re-audit because search calibration reads its observations.
+    """
+    session = load_json(session_path)
+    require_state(session, "AWAITING_VISUAL_AUDIT")
+    version = _current_version(session)
+    page_index = version["page_index"]
+    require(version["origin"] == "AUTOMATIC_REPAIR", "only an automatic repair can be accepted with an identity check")
+    require(page_index != 0 or session.get("search_calibrated") is True, "the search page needs a full re-audit for search calibration")
+    previous = [item for item in session["generated_versions"] if item["page_index"] == page_index and item.get("status") == "BLOCKED" and item["revision"] < version["revision"]]
+    require(bool(previous), "automatic repair has no pre-repair draft")
+    draft = previous[-1]
+    check = load_json(check_path)
+    require(check.get("agent_pixel_reviewed") is True, "repair identity check requires direct pixel review")
+    require(check.get("repaired_image_sha256") == version["sha256"], "repair identity check is stale for the repaired image")
+    require(check.get("pre_repair_image_sha256") == draft["sha256"], "repair identity check is stale for the pre-repair draft")
+    verdicts = {}
+    for key in ("pre_repair", "repaired"):
+        item = check.get(key)
+        require(isinstance(item, dict), f"repair identity check is missing {key}")
+        require(isinstance(item.get("label_exact"), bool) and isinstance(item.get("identity_intact"), bool), f"repair identity check {key} needs label_exact and identity_intact")
+        verdicts[key] = item["label_exact"] and item["identity_intact"]
+    draft_failures = next((entry["failed_checks"] for entry in reversed(session["excluded_generated_assets"]) if entry.get("sha256") == draft["sha256"]), [])
+    version["post_repair_identity_check"] = copy.deepcopy(check)
+    def mismatches(item: dict[str, Any]) -> int:
+        value = item.get("label_mismatch_count")
+        return int(value) if isinstance(value, int) and value >= 0 else (0 if item.get("label_exact") else 1)
+
+    # Polaris r4: when both drafts misprint the label, keep the one with fewer
+    # label mismatches (identity must still be intact).
+    fewer_mismatches = (
+        not verdicts["pre_repair"]
+        and not verdicts["repaired"]
+        and check["pre_repair"]["identity_intact"] is True
+        and mismatches(check["pre_repair"]) < mismatches(check["repaired"])
+    )
+    if (verdicts["pre_repair"] and not verdicts["repaired"]) or fewer_mismatches:
+        version["status"] = "REJECTED_IDENTITY_REGRESSION"
+        draft["status"] = "ACCEPTED_WITH_RESIDUALS"
+        session["excluded_generated_assets"] = [entry for entry in session["excluded_generated_assets"] if entry.get("sha256") != draft["sha256"]]
+        session["excluded_generated_assets"].append({"page_index": page_index, "file": version["file"], "sha256": version["sha256"], "failed_checks": ["product_identity_match"], "repair_scope": "REPAIR_DAMAGED_PRODUCT_IDENTITY"})
+        session["residual_issues"].append({"page_index": page_index, "revision": draft["revision"], "failed_checks": list(draft_failures), "decision_summary": "返修改坏了商品标签或身份，已交付返修前版本；返修前审图的失败项未修复。"})
+        action = "accept-repair-kept-pre-repair-draft"
+    else:
+        version["status"] = "ACCEPTED_WITH_RESIDUALS"
+        summary = "已按首审失败项完成一次返修；返修结果只复核了商品标签与身份，其余失败项未做完整复审。"
+        failed = list(draft_failures)
+        if not verdicts["repaired"]:
+            failed = list(dict.fromkeys([*failed, "product_identity_match"]))
+            summary = "返修前后商品标签或身份都与原商品不一致，交付返修结果；" + summary
+        session["residual_issues"].append({"page_index": page_index, "revision": version["revision"], "failed_checks": failed, "decision_summary": summary})
+        action = "accept-repair-identity-checked"
+    session["accepted_pages"] = sorted(set(session["accepted_pages"]) | {page_index})
+    _advance(session, page_index, action)
+    _save(session_path, session)
+    delivered = selected_version(session, page_index)
+    return _result(session, page_index=page_index, delivered_sha256=delivered["sha256"] if delivered else None, kept_pre_repair_draft=action == "accept-repair-kept-pre-repair-draft")
 
 
 def prepare_repair(session_path: str, repair_path: str) -> dict[str, Any]:

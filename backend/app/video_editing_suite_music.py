@@ -10,7 +10,7 @@ from typing import NamedTuple
 from .config import Settings
 from .motion_library import sha256
 from .video_editing_pipeline import run
-from .video_editing_render_edits import MUSIC_REDUCTION_DB
+from .video_editing_render_edits import music_gain_offset
 from .video_editing_template_audio import MUSIC_SUBDIRECTORY
 
 
@@ -196,7 +196,7 @@ def mix_suite_music(
     gain = (
         track.gain_db
         + speech_trim
-        - (MUSIC_REDUCTION_DB if preference == "lower" else 0)
+        + music_gain_offset(preference)
     )
     # Keep the original speech separate as the compressor's detector. Cue peaks
     # do not trigger ducking and tutorial holds let the bed continue underneath.

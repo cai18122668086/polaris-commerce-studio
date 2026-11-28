@@ -27,6 +27,12 @@ from app.models import (
 from app.storage import ValidatedImage
 
 
+@pytest.fixture(autouse=True)
+def _crawler_admin(settings) -> None:
+    """真实商品爬虫接口仅限管理员；这里的用例以开发环境管理员身份调用。"""
+    settings.announcement_admin_emails = ["admin@example.com"]
+
+
 def _wait_for_status(
     client: TestClient, task_id: str, expected: set[str]
 ) -> dict[str, Any]:
@@ -804,3 +810,24 @@ def test_celery_api_startup_leaves_queue_recovery_to_maintenance(
     assert len(recovered_calls) == 1
     assert resumed_calls == []
 
+
+
+def test_crawl_task_routes_require_admin(client, settings) -> None:
+    settings.announcement_admin_emails = []
+    payload = {
+        "workspace_id": "ws_test",
+        "url": "https://item.taobao.com/item.htm?id=123456789012",
+        "platform": "taobao",
+    }
+    requests = [
+        client.post("/api/ecommerce/crawl-tasks", json=payload),
+        client.get("/api/ecommerce/crawl-tasks", params={"workspace_id": "ws_test"}),
+        client.get("/api/ecommerce/crawl-tasks/crw_missing"),
+        client.get("/api/ecommerce/crawl-tasks/crw_missing/events"),
+        client.get("/api/ecommerce/crawl-tasks/crw_missing/result"),
+        client.post("/api/ecommerce/crawl-tasks/crw_missing/cancel"),
+        client.post("/api/ecommerce/crawl-tasks/crw_missing/retry"),
+    ]
+    for response in requests:
+        assert response.status_code == 403, response.request.url
+        assert response.json()["error"]["code"] == "ADMIN_REQUIRED"

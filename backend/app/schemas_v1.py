@@ -46,6 +46,7 @@ class CurrentUserResponse(BaseModel):
 class VideoStudioAccessResponse(BaseModel):
     allowed: Literal[True] = True
     user_id: str
+    internal_tools: bool = False
 
 
 class WorkspaceResponse(BaseModel):
@@ -177,6 +178,14 @@ class AccessUrlResponse(BaseModel):
     expires_at: datetime
     disposition: Literal["inline", "attachment"]
     original_url: str | None = None
+
+
+class FreeEditAllowance(BaseModel):
+    asset_id: str
+    eligible: bool
+    limit: int = Field(ge=0)
+    used: int = Field(ge=0)
+    remaining: int = Field(ge=0)
 
 
 class ReplicaOutputBinding(BaseModel):
@@ -478,6 +487,9 @@ class DetailPackConfiguration(BaseModel):
             self.auto_start_after_plan = False
         allowed_sizes = {
             "750x1000",
+            "990x1320",
+            "1080x1440",
+            "1242x1656",
             "1200x1600",
             "1440x1920",
             "900x1200",
@@ -835,9 +847,37 @@ class ReplicaImageSelection(BaseModel):
     local_edit_job_id: str | None = Field(default=None, min_length=1, max_length=40)
 
 
+class MissingMainImagePage(BaseModel):
+    page_index: int
+    page_number: int
+    page_name: str
+    page_role: str
+    reason: str
+    recover_from_local_result: bool
+
+
+class MainImageMissingPagesResponse(BaseModel):
+    job_id: str
+    delivered_pages: list[int]
+    missing_pages: list[MissingMainImagePage]
+    credits_per_page: int
+    max_credits: int
+    charge_rule: str
+    # A redo already started from this job: the page links to it instead of
+    # offering another redo.
+    redo_job_id: str | None = None
+    redo_job_status: str | None = None
+
+
 class RetryRequest(BaseModel):
     scope: RetryScope = RetryScope.FAILED
     item_ids: list[str] = Field(default_factory=list, max_length=12)
+    # Main image / detail 精致版: the exact missing pages (0-based) the user
+    # confirmed on the reconciliation screen; required to redo pages whose
+    # result is unknown.
+    confirm_missing_pages: list[int] | None = Field(
+        default=None, min_length=1, max_length=12
+    )
     local_edit_instruction: str | None = Field(
         default=None, min_length=1, max_length=4000
     )

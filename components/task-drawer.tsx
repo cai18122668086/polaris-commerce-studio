@@ -13,7 +13,9 @@ import { allowsJobAction } from "@/lib/jobs/actions";
 import { jobWorkspaceHref } from "@/lib/jobs/workspace-link";
 import { StatusBadge } from "./status-badge";
 import { useBodyScrollLock } from "@/lib/hooks/use-body-scroll-lock";
-import { errorMessage } from "@/lib/api/request";
+import { errorMessage, isSignedOutError } from "@/lib/api/request";
+import { loginHref } from "@/lib/auth/return-to";
+import { usePathname } from "next/navigation";
 import { TaskWorkspaceLink } from "./task-workspace-link";
 
 const stageLabels: Record<string, string> = {
@@ -22,6 +24,9 @@ const stageLabels: Record<string, string> = {
   planning: "正在规划",
   awaiting_confirmation: "等待确认",
   awaiting_final_review: "等待整组确认",
+  awaiting_user_final_review: "等待整组确认",
+  awaiting_local_edit_review: "等待确认修改效果",
+  set_audit_failed: "整组审核未通过",
   processing: "正在生成",
   generating: "正在生成",
   retry: "正在重试",
@@ -62,6 +67,8 @@ export function TaskDrawer({
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const restoreFocusRef = useRef(false);
   const { workspace, error: workspaceError } = useWorkspace();
+  const pathname = usePathname();
+  const signedOut = isSignedOutError(workspaceError);
   const jobs = useCreationRecords(open ? workspace?.id : undefined);
   const runtime = useRuntimeStatus();
   const cancel = useCancelJob(workspace?.id);
@@ -156,19 +163,20 @@ export function TaskDrawer({
           <div><p>需处理</p><strong className="danger-text">{allJobs.filter((job) => ["failed", "partial", "awaiting_confirmation", "awaiting_final_review"].includes(job.status)).length}</strong></div>
         </div>
         <div className="drawer-list">
-          {(workspaceError || jobs.error || cancel.error || retry.error) && <div className="api-state api-state--error" role="alert"><p>{errorMessage(workspaceError ?? jobs.error ?? cancel.error ?? retry.error)}</p><button className="secondary-button" onClick={() => void jobs.refetch()}>重新加载任务</button></div>}
-          {jobs.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>加载任务中…</p></div>}
+          {signedOut && <div className="api-state drawer-signed-out"><p><strong>登录后查看任务进度</strong><span>生成记录、进度和结果会保存在你的账户里。</span></p><Link className="primary-button" href={loginHref(pathname)}>登录 / 注册</Link></div>}
+          {!signedOut && (workspaceError || jobs.error || cancel.error || retry.error) && <div className="api-state api-state--error" role="alert"><p>{errorMessage(workspaceError ?? jobs.error ?? cancel.error ?? retry.error)}</p><button className="secondary-button" onClick={() => void jobs.refetch()}>重新加载任务</button></div>}
+          {!signedOut && jobs.isPending && <div className="api-state"><LoaderCircle className="spin" /><p>加载任务中…</p></div>}
           {!workspaceError && !jobs.error && !jobs.isPending && visibleJobs.length === 0 && <div className="api-state"><p>暂无生成任务。</p></div>}
           {visibleJobs.map((job) => (
             <article key={job.id} className="drawer-job drawer-job--api">
               <div className="drawer-job__body">
-                <div className="drawer-job__top"><StatusBadge status={job.status} /><small>{formatDate(job.created_at)}</small></div>
+                <div className="drawer-job__top"><StatusBadge status={job.status} jobType={job.type} /><small>{formatDate(job.created_at)}</small></div>
                 <TaskWorkspaceLink href={jobWorkspaceHref(job)} onClick={onClose} className="drawer-job__link"><strong>{jobTitle(job)}</strong><p>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "Mock 流程已结束，没有生成真实图片。" : jobNote(job)}</p></TaskWorkspaceLink>
                 {["processing", "queued", "planning"].includes(job.status) && <div className="mini-progress"><i style={{ width: `${job.progress}%` }} /></div>}
                 <div className="drawer-job__meta">
                   <span>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "0 / 6 张图片" : jobCount(job)}</span><span>{job.type === "domestic_main_image" && job.status === "completed" && runtime.data?.capabilities.features?.domestic_main_image?.execution === "mock" ? "未生成图片" : presentJobStage(job.stage, job.status)}</span>
                   {allowsJobAction(job.allowed_actions, "cancel") && <button aria-label={`取消任务 ${jobTitle(job)}`} onClick={() => runCancel(job)}><Ban size={14} /></button>}
-                  {allowsJobAction(job.allowed_actions, "retry") && <button aria-label={`重试失败项 ${jobTitle(job)}`} onClick={() => runRetry(job)}><RotateCcw size={14} /></button>}
+                  {allowsJobAction(job.allowed_actions, "retry") && !(job.type === "local_edit" && job.status === "awaiting_final_review") && <button aria-label={`重试失败项 ${jobTitle(job)}`} onClick={() => runRetry(job)}><RotateCcw size={14} /></button>}
                 </div>
               </div>
             </article>

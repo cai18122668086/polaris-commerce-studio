@@ -116,7 +116,7 @@ def persist_planning_preview(
                 "delivery": "preview_first",
                 **(
                     {"native_edits": {"music": row.snapshot["music"]}}
-                    if row.snapshot.get("music") in {"lower", "off"}
+                    if row.snapshot.get("music") in {"lower", "raise", "off"}
                     and (candidate.recipes.get("sound") or {}).get("music")
                     else {}
                 ),

@@ -6,7 +6,8 @@ import {
   LoaderCircle,
   TriangleAlert,
 } from "lucide-react";
-import type { JobStatus } from "@/lib/api/types";
+import type { Job, JobStatus } from "@/lib/api/types";
+import { jobStatusLabel } from "@/lib/jobs/presentation";
 
 const statusMap: Record<
   JobStatus,
@@ -25,14 +26,17 @@ const statusMap: Record<
   cancelled: { label: "已取消", className: "status-neutral", icon: Ban },
 };
 
-export function StatusBadge({ status }: { status: JobStatus }) {
+/** Pass jobType so single-image jobs never read as a whole-set confirmation.
+ *  `label` overrides the text for item-level states that reuse a job style. */
+export function StatusBadge({ status, jobType, label: labelOverride }: { status: JobStatus; jobType?: Job["type"]; label?: string }) {
   const config = statusMap[status];
+  const label = labelOverride ?? (status === "awaiting_final_review" && jobType ? jobStatusLabel(status, jobType) : config.label);
   const Icon = config.icon;
 
   return (
     <span className={`status-badge ${config.className}`}>
       <Icon size={13} className={["processing", "planning", "cancelling"].includes(status) ? "spin" : ""} />
-      {config.label}
+      {label}
     </span>
   );
 }

@@ -2172,6 +2172,81 @@ def test_v20_visual_judgment_still_rejects_duplicate_that_hides_missing_check() 
     assert dropped["name"] in str(captured.value)
 
 
+def test_v20_closure_page_contradiction_routes_to_repair_not_harness_block() -> None:
+    """Page 6 (spec closure) judgments passed selling-point dominance while
+    observing that the claim evidence is not the primary visual. The immutable
+    Harness rejects that contradiction with HARNESS_BLOCKED, ending the page
+    without its automatic repair. Normalization must downgrade the pass."""
+
+    payload = _fake_v20_judgment_payload("job_closure_contradiction")
+    payload.pop("page_index", None)
+    observations = payload["observations"]
+    observations["evidence_is_primary_visual"] = False
+    observations["neighbor_layout_difference"] = (
+        "规格簇位于右下，与上一页细节标注版式明显不同"
+    )
+    for item in payload["checks"]:
+        item["passed"] = True
+        item["score"] = max(float(item["score"]), 86)
+    payload["all_material_deficiencies"] = []
+    layout_contract = {
+        "composition_archetype": observations["composition_archetype_seen"],
+        "product_zone": observations["product_zone_seen"],
+        "copy_zone": observations["copy_zone_seen"],
+        "dominant_view": observations["dominant_view_seen"],
+        "evidence_topology": observations["evidence_topology_seen"],
+    }
+
+    normalized = AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+        payload,
+        {"page_index": 5, "page_contract": {"layout_contract": layout_contract}},
+        runtime_image_sha256="a" * 64,
+    )
+
+    checks = {item["name"]: item for item in normalized["checks"]}
+    dominance = checks["selling_point_visual_dominance"]
+    assert dominance["passed"] is False
+    assert dominance["score"] < 70
+    assert [item["check"] for item in normalized["all_material_deficiencies"]] == [
+        "selling_point_visual_dominance"
+    ]
+    # Consistent passes are untouched.
+    assert checks["layout_not_cloned"]["passed"] is True
+    assert checks["evidence_relation_visible"]["passed"] is True
+
+
+def test_v20_layout_passes_are_downgraded_when_layout_contract_is_missed() -> None:
+    payload = _fake_v20_judgment_payload("job_layout_contradiction")
+    payload.pop("page_index", None)
+    payload["observations"]["neighbor_layout_difference"] = "短"
+    payload["observations"]["physical_evidence"] = []
+    for item in payload["checks"]:
+        item["passed"] = True
+        item["score"] = max(float(item["score"]), 86)
+    payload["all_material_deficiencies"] = []
+
+    normalized = AuroraMainImageProvider._normalize_v20_visual_judgment_payload(
+        payload,
+        {
+            "page_index": 2,
+            "page_contract": {
+                "layout_contract": {"composition_archetype": "NOT_WHAT_WAS_SEEN"}
+            },
+        },
+        runtime_image_sha256="a" * 64,
+    )
+
+    failed = {
+        item["name"] for item in normalized["checks"] if item["passed"] is False
+    }
+    assert {
+        "layout_not_cloned",
+        "approved_plan_fidelity_match",
+        "evidence_relation_visible",
+    } <= failed
+    assert failed == {item["check"] for item in normalized["all_material_deficiencies"]}
+
+
 def test_harness_runner_rejects_paths_outside_job_workspace(tmp_path: Path) -> None:
     outside = tmp_path.parent / "outside.json"
     with pytest.raises(AuroraHarnessError) as captured:

@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from .config import Settings
+from .video_voice_names import clean_original, minimax_display
 
 EMOTIONS = ["自然", "平静", "愉快", "悲伤", "愤怒", "害怕", "厌恶", "惊讶"]
 EMOTION_CODES = dict(
@@ -75,6 +76,45 @@ CATALOG = json.loads(
 VOICES = {voice_key(v["voice_id"]): v for v in CATALOG["voices"]}
 
 
+def referenced_voice_ids(
+    session: Any, workspace_id: str, owner_user_id: str
+) -> set[str]:
+    """本工作区固定形象、作品条目、历史口播任务用过的声音 id。
+
+    隐藏的声音（角色化 / beta 重复等）只要被引用过就照常放回列表，保证旧搭配可用。
+    只取 voice_id 列和 JSON 里的单个字段，PostgreSQL / SQLite 都能跑。
+    """
+    from sqlalchemy import select
+
+    from .video_generation_models import VideoGenerationRecord
+    from .video_persona_models import VideoPersonaRecord
+    from .video_work_models import VideoWorkItemRecord
+
+    ids: set[str] = set()
+    for model in (VideoPersonaRecord, VideoWorkItemRecord):
+        ids.update(
+            session.scalars(
+                select(model.voice_id)
+                .where(
+                    model.workspace_id == workspace_id,
+                    model.owner_user_id == owner_user_id,
+                    model.voice_id.is_not(None),
+                )
+                .distinct()
+            )
+        )
+    raw = session.scalars(
+        select(VideoGenerationRecord.details["tts"]["voice_id"].as_string())
+        .where(
+            VideoGenerationRecord.workspace_id == workspace_id,
+            VideoGenerationRecord.owner_user_id == owner_user_id,
+        )
+        .distinct()
+    )
+    ids.update(voice_key(value) for value in raw if value)
+    return {value for value in ids if value}
+
+
 def tao_ready(settings: Settings) -> bool:
     return bool(
         settings.video_providers_enabled
@@ -97,26 +137,35 @@ def preview_path(settings: Settings, key: str, model: str | None = None) -> Path
     )
 
 
-def official_voices(settings: Settings, root: str) -> list[dict[str, Any]]:
+def official_voices(
+    settings: Settings, root: str, include: set[str] | frozenset[str] = frozenset()
+) -> list[dict[str, Any]]:
+    """系统声音列表。显示名来自 video_voice_names；隐藏的声音只有在 include
+    （被固定形象 / 作品条目 / 历史任务引用）里时才放回，显示供应商原名。"""
     available = tao_ready(settings)
-    return [
-        {
-            "id": key,
-            "name": v["name"],
-            "gender": voice_gender(v),
-            "tag": v["language"],
-            "description": "系统声音",
-            "provider": "tao",
-            "available": available,
-            "language": v["language"],
-            "emotions": EMOTIONS,
-            "languages": LANGUAGES,
-            "preview_url": root + f"/voices/{key}/preview"
-            if preview_path(settings, key).is_file()
-            else None,
-        }
-        for key, v in VOICES.items()
-    ]
+    result = []
+    for key, v in VOICES.items():
+        shown = minimax_display(v)
+        if shown is None and key not in include:
+            continue
+        result.append(
+            {
+                "id": key,
+                "name": shown["name"] if shown else clean_original(v["name"]),
+                "gender": shown["gender"] if shown else voice_gender(v),
+                "tag": v["language"],
+                "description": shown["description"] if shown else "系统声音",
+                "provider": "tao",
+                "available": available,
+                "language": v["language"],
+                "emotions": EMOTIONS,
+                "languages": LANGUAGES,
+                "preview_url": root + f"/voices/{key}/preview"
+                if preview_path(settings, key).is_file()
+                else None,
+            }
+        )
+    return result
 
 
 def voice_gender(voice: dict[str, Any]) -> str:

@@ -563,7 +563,7 @@ class XingheSingleImageProvider:
                 return ProviderResult(
                     outcome=ProviderOutcome.FAILED,
                     error_code="IMAGE_PROVIDER_FAILED",
-                    error_message=f"Image provider failed ({type(exc).__name__}).",
+                    error_message=f"生成服务暂时不可用（{type(exc).__name__}）。",
                     usage_reported=False,
                     raw_usage=self._safe_usage(
                         None,
@@ -879,7 +879,7 @@ class XingheSingleImageProvider:
                 return ProviderResult(
                     outcome=ProviderOutcome.FAILED,
                     error_code="IMAGE_PROVIDER_FAILED",
-                    error_message=f"Image provider failed ({type(exc).__name__}).",
+                    error_message=f"生成服务暂时不可用（{type(exc).__name__}）。",
                     usage_reported=False,
                     raw_usage=raw_usage,
                     estimated_cost_micros=_gateway_image_estimate(
@@ -1016,7 +1016,7 @@ class XingheSingleImageProvider:
                 outcome=ProviderOutcome.FAILED,
                 artifact=None,
                 error_code="AMAZON_VISUAL_REVIEW_UNAVAILABLE",
-                error_message="Amazon Skill QA is unavailable for this provider route.",
+                error_message="亚马逊图片质检暂不可用。",
                 retryable=True,
             )
         review_request = AmazonVisualReviewRequest(
@@ -1054,7 +1054,7 @@ class XingheSingleImageProvider:
                 outcome=ProviderOutcome.FAILED,
                 artifact=None,
                 error_code="AMAZON_VISUAL_REVIEW_INVALID",
-                error_message="Amazon Skill QA returned an invalid response.",
+                error_message="亚马逊图片质检返回的结果无效。",
                 retryable=True,
             )
         raw_usage = _merge_amazon_review_usage(result.raw_usage, review)
@@ -1761,7 +1761,7 @@ class XingheSingleImageProvider:
             return ProviderResult(
                 outcome=ProviderOutcome.FAILED,
                 error_code="IMAGE_OUTPUT_ARTIFACT_MISSING",
-                error_message="The image provider succeeded without an artifact.",
+                error_message="生成服务没有返回图片。",
                 retryable=envelope.skill_id
                 in {
                     "xinghe-amazon-visual-suite",

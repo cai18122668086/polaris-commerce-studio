@@ -24,3 +24,33 @@
 .error { color:#a32d37; }
 .memo { margin-bottom:10px; }
 @media(max-width:600px) { .grid { grid-template-columns:1fr; } .searchForm { align-items:stretch; flex-direction:column; } }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .library{color:#e6e4e2}
+:global(.theme-ember) .library header p{color:#99948c}
+:global(.theme-ember) .summary{background:#1c1a19}
+:global(.theme-ember) .library .tabs button{color:#b8b4af;background:#1f1d1b}
+:global(.theme-ember) .library .tabs button[aria-pressed=true]{color:#0f0e0d;background:#e6e2db}
+:global(.theme-ember) .library .grid article{border:1px solid #262422;background:#0f0e0d}
+:global(.theme-ember) .grid small{color:#8c867d}
+:global(.theme-ember) .status{background:#1b1918;color:#a39d97}
+:global(.theme-ember) .choiceBadge{background:#181615;color:#dc7f06!important}
+:global(.theme-ember) .detail,:global(.theme-ember) .noteEditor,:global(.theme-ember) .memo{background:#151413;border:1px solid #2b2926}
+:global(.theme-ember) .noteEditor textarea{background:#0f0e0d;border:1px solid #302e2b}
+:global(.theme-ember) .error{color:#fa682a}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .library{color:#373532}
+:global(.theme-plaster) .library header p{color:#6f6c64}
+:global(.theme-plaster) .summary{background:#ebeae9;border-radius:14px}
+:global(.theme-plaster) .library .tabs button{color:#1a1a19;background:#e7e7e5}
+:global(.theme-plaster) .library .tabs button[aria-pressed=true]{color:#ffffff;background:#1a1a19}
+:global(.theme-plaster) .library .grid article{border:1px solid #e0dfdd;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .grid small{color:#7a776f}
+:global(.theme-plaster) .status{background:#ececea;color:#67655e}
+:global(.theme-plaster) .choiceBadge{background:#f0efee;color:#9a530d!important;border-radius:999px}
+:global(.theme-plaster) .detail,:global(.theme-plaster) .noteEditor,:global(.theme-plaster) .memo{background:#f2f2f1;border:1px solid #d7d6d3;border-radius:14px}
+:global(.theme-plaster) .noteEditor textarea{background:#ffffff;border:1px solid #d2d0cd;border-radius:12px}
+:global(.theme-plaster) .error{color:#b23a0e}
+/* plaster:end */

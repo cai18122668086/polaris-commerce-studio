@@ -60,7 +60,7 @@ def ready(settings: Settings) -> bool:
         and settings.video_cosyvoice_enabled
         and settings.video_cosyvoice_api_key.get_secret_value()
         and (
-            settings.video_cosyvoice_platform == "qianwen"
+            settings.video_cosyvoice_platform in {"qianwen", "dashscope"}
             or settings.video_cosyvoice_workspace_id
         )
     )
@@ -79,7 +79,64 @@ def api_url(settings: Settings, path: str) -> str:
         )
     if settings.video_cosyvoice_platform == "qianwen":
         return f"https://maas.qianwenaiapi.com/api/v1/services/audio/tts/{path}"
+    if settings.video_cosyvoice_platform == "dashscope":
+        # Standard Alibaba Cloud Bailian (DashScope) endpoint, no workspace host.
+        return f"https://dashscope.aliyuncs.com/api/v1/services/audio/tts/{path}"
     return f"https://{settings.video_cosyvoice_workspace_id}.cn-beijing.maas.aliyuncs.com/api/v1/services/audio/tts/{path}"
+
+
+SERVICE_UNAVAILABLE = "VIDEO_CLONE_SERVICE_UNAVAILABLE"
+# Account-level refusals: not transient, never billed upstream, never retried.
+ACCOUNT_CODES = {
+    "AccessDenied.Unpurchased": "声音克隆服务暂未开通，请联系客服",
+    "AccessDenied": "声音克隆服务暂未开通，请联系客服",
+    "Arrearage": "声音服务账户欠费，请联系客服",
+    "InvalidApiKey": "声音服务配置有误，请联系客服",
+}
+
+
+def provider_error(response: httpx.Response) -> ApiError:
+    """Map a non-2xx reply to a clear error and keep the provider's reason."""
+    body = b""
+    try:
+        for chunk in response.iter_bytes():
+            body += chunk
+            if len(body) > 65536:
+                break
+    except httpx.HTTPError:
+        pass
+    code = message = request_id = ""
+    try:
+        parsed = json.loads(body[:65536])
+        if isinstance(parsed, dict):
+            code = str(parsed.get("code") or "")[:120]
+            message = str(parsed.get("message") or "")[:300]
+            request_id = str(parsed.get("request_id") or "")[:120]
+    except ValueError:
+        pass
+    details = {
+        "provider_status": response.status_code,
+        "provider_code": code or None,
+        "provider_message": message or None,
+        "provider_request_id": request_id or None,
+    }
+    if code in ACCOUNT_CODES:
+        return ApiError(502, SERVICE_UNAVAILABLE, ACCOUNT_CODES[code], details)
+    if response.status_code >= 500 or response.status_code == 408:
+        return ApiError(
+            502,
+            "VIDEO_PROVIDER_OUTCOME_UNKNOWN",
+            "声音服务未返回成功结果，请查看原任务。",
+            details,
+        )
+    return ApiError(
+        502,
+        "VIDEO_PROVIDER_REJECTED",
+        "声音服务未接受本次请求"
+        + (f"（{code}）" if code else "")
+        + "，请换一段清晰的本人独白重试或联系客服。",
+        details,
+    )
 
 
 class CosyVoice:
@@ -109,13 +166,7 @@ class CosyVoice:
                 ) as response,
             ):
                 if not response.is_success:
-                    raise ApiError(
-                        502,
-                        "VIDEO_PROVIDER_OUTCOME_UNKNOWN"
-                        if response.status_code >= 500 or response.status_code == 408
-                        else "VIDEO_PROVIDER_REJECTED",
-                        "声音服务未返回成功结果，请查看原任务。",
-                    )
+                    raise provider_error(response)
                 chunks, size = [], 0
                 for chunk in response.iter_bytes():
                     size += len(chunk)

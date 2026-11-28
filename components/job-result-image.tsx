@@ -1,6 +1,6 @@
 "use client";
 
-import { Download, ExternalLink, LoaderCircle } from "lucide-react";
+import { Download, ExternalLink, LoaderCircle, PencilLine } from "lucide-react";
 import { usePreviewVisibility } from "@/features/assets/hooks/use-preview-visibility";
 import { useState } from "react";
 import {
@@ -10,13 +10,15 @@ import {
 import { errorMessage } from "@/lib/api/request";
 import styles from "./workflow-results.module.css";
 
-export function JobResultImage({ workspaceId, assetId, alt, label, width, height }: {
+export function JobResultImage({ workspaceId, assetId, alt, label, width, height, onEdit, edited }: {
   workspaceId?: string;
   assetId: string;
   alt: string;
   label?: string;
   width?: number;
   height?: number;
+  onEdit?: () => void;
+  edited?: boolean;
 }) {
   const { ref, visible } = usePreviewVisibility<HTMLElement>();
   const access = useAssetAccessUrl(workspaceId, visible ? assetId : undefined, "thumbnail");
@@ -59,7 +61,7 @@ export function JobResultImage({ workspaceId, assetId, alt, label, width, height
   return (
     <article ref={ref} className={styles.resultCard}>
       <a href={access.data.original_url ?? access.data.url} target="_blank" rel="noreferrer" aria-label={`${alt}，单张查看`}><img data-growth-asset={assetId} loading="lazy" decoding="async" src={access.data.url} alt={alt} onError={() => setFailedUrl(access.data?.url)} /><ExternalLink size={15} /></a>
-      <div><strong>{label ?? alt}</strong><button type="button" onClick={download} disabled={isDownloading || !workspaceId} aria-label={`下载${alt}`}>{isDownloading ? <LoaderCircle size={14} className="spin" /> : <Download size={14} />}{isDownloading ? "准备中…" : "下载"}</button></div>
+      <div><strong>{label ?? alt}{edited ? <small className={styles.editedTag}>已修改</small> : null}</strong><span className={styles.resultActions}>{onEdit ? <button type="button" onClick={onEdit} disabled={!workspaceId} aria-label={`修改${alt}`}><PencilLine size={14} />修改</button> : null}<button type="button" onClick={download} disabled={isDownloading || !workspaceId} aria-label={`下载${alt}`}>{isDownloading ? <LoaderCircle size={14} className="spin" /> : <Download size={14} />}{isDownloading ? "准备中…" : "下载"}</button></span></div>
       {width && height ? <p className={styles.resultDimensions}>实际尺寸 {width} × {height} px</p> : null}
       {downloadError ? <p className={styles.downloadError} role="alert">{downloadError}</p> : null}
     </article>

@@ -7,6 +7,7 @@ import { useAutoReveal } from "@/features/video-studio/use-auto-reveal";
 import { Dialog, Empty, PickerFooter, PickerTabs } from "./studio-primitives";
 import baseStyles from "./video-studio.module.css";
 import pickerStyles from "./selection-controls.module.css";
+import { mediaUrl } from "@/lib/api/base-url";
 const styles = { ...baseStyles, ...pickerStyles };
 
 type Props = {
@@ -43,8 +44,8 @@ export function AvatarPicker({ avatars, selectedId, loading, error, onSelect, on
         {visible.map(avatar => <article key={avatar.id} className={`${styles.avatarPickerCard} ${selectedId === avatar.id ? styles.avatarPickerSelected : ""}`}>
           <button type="button" className={styles.avatarPickerSelect} aria-label={`选择${avatar.name}`} aria-pressed={selectedId === avatar.id} onClick={() => onSelect(avatar.id)}>
             <span className={styles.avatarPickerStage}>
-              <img className={styles.avatarPickerBackdrop} src={avatar.cover_url || undefined} alt="" aria-hidden="true" loading="lazy" />
-              <img className={styles.avatarPickerPortrait} src={avatar.cover_url || undefined} alt={`${avatar.name}完整形象`} loading="lazy" />
+              <img className={styles.avatarPickerBackdrop} src={mediaUrl(avatar.cover_url || undefined)} alt="" aria-hidden="true" loading="lazy" />
+              <img className={styles.avatarPickerPortrait} src={mediaUrl(avatar.cover_url || undefined)} alt={`${avatar.name}完整形象`} loading="lazy" />
               {selectedId === avatar.id && <span className={styles.avatarPickerCheck}><Check size={13} /></span>}
             </span>
             <span className={styles.avatarPickerCaption}><b title={avatar.name}>{labelOf(avatar)}</b><small>{avatar.source === "self_owned" && !avatar.ready ? "待生成动作" : avatar.gender === "未知" ? avatar.tag : `${avatar.gender} · ${avatar.tag}`}</small></span>
@@ -55,6 +56,6 @@ export function AvatarPicker({ avatars, selectedId, loading, error, onSelect, on
       {!loading && !error && filtered.length > 0 && <div ref={loadMoreRef} className={styles.pickerLoadStatus} role="status">{hasMore ? `已展示 ${visibleCount} / ${filtered.length}，继续向下浏览` : `已展示全部 ${filtered.length} 个形象`}</div>}
     </div>
     <PickerFooter selected={selected ? labelOf(selected) : undefined} disabled={!selected || loading} applyLabel="应用形象" onApply={onApply} onClose={onClose} />
-    {preview && <Dialog title={labelOf(preview)} className={styles.pickerPreviewDialog} onClose={() => setPreview(undefined)}>{preview.preview_url ? <video controls playsInline preload="metadata" src={preview.preview_url} className={styles.pickerPreviewMedia} /> : <img src={preview.cover_url || undefined} alt={preview.name} className={styles.pickerPreviewMedia} />}<p className={styles.pickerPreviewNote}>{preview.ready ? "动作模板已就绪，可用于口播创作。" : "参考形象；生成动作模板后可用于口播。"}</p><footer className={styles.dialogFooter}><button className={styles.outlineButton} onClick={() => setPreview(undefined)}>返回选择</button><button className={styles.primaryButton} onClick={() => { onSelect(preview.id); setPreview(undefined); }}>选择此形象</button></footer></Dialog>}
+    {preview && <Dialog title={labelOf(preview)} className={styles.pickerPreviewDialog} onClose={() => setPreview(undefined)}>{preview.preview_url ? <video controls playsInline preload="metadata" src={mediaUrl(preview.preview_url)} className={styles.pickerPreviewMedia} /> : <img src={mediaUrl(preview.cover_url || undefined)} alt={preview.name} className={styles.pickerPreviewMedia} />}<p className={styles.pickerPreviewNote}>{preview.ready ? "动作模板已就绪，可用于口播创作。" : "参考形象；生成动作模板后可用于口播。"}</p><footer className={styles.dialogFooter}><button className={styles.outlineButton} onClick={() => setPreview(undefined)}>返回选择</button><button className={styles.primaryButton} onClick={() => { onSelect(preview.id); setPreview(undefined); }}>选择此形象</button></footer></Dialog>}
   </Dialog>;
 }

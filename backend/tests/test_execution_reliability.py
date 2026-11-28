@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 
 import app.execution as execution_module
 from app.aurora_main_image_planner import AuroraPlanningError
+from app.aurora_main_image_provider import _set_audit_idempotency_key
 from app.domain import (
     AttemptStatus,
     JobItemStatus,
@@ -405,6 +406,52 @@ def test_parallel_aurora_set_audit_retries_transient_failure(
         None,
     )
     assert provider.set_audit_calls == 3
+
+
+class _AttemptAwareSetAuditProvider(FakeProvider):
+    def __init__(self) -> None:
+        super().__init__()
+        self.attempts: list[int] = []
+
+    async def audit_parallel_set(self, job_id: str, audit_attempt: int = 1) -> bool:
+        del job_id
+        self.attempts.append(audit_attempt)
+        if len(self.attempts) < 3:
+            raise AuroraPlanningError(
+                "Planner content was not a JSON object (whole_json:decode_failed)."
+            )
+        return True
+
+
+def test_parallel_aurora_set_audit_retry_is_a_new_planner_call(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The planner journal replays a saved result per idempotency key, so a
+    retry with the same key would replay the first non-JSON response."""
+
+    async def no_sleep(_: float) -> None:
+        return None
+
+    monkeypatch.setattr(execution_module.asyncio, "sleep", no_sleep)
+    job_id = _six_succeeded_aurora_pages(client)
+    provider = _AttemptAwareSetAuditProvider()
+    coordinator = ExecutionCoordinator(
+        client.app.state.session_factory,
+        provider,
+        worker_id="parallel-audit-attempts",
+    )
+
+    assert asyncio.run(coordinator._run_parallel_aurora_set_audit(job_id)) == (
+        True,
+        None,
+    )
+    assert provider.attempts == [1, 2, 3]
+    keys = {
+        _set_audit_idempotency_key(f"{job_id}:aurora-v20-set-audit:v1", attempt)
+        for attempt in provider.attempts
+    }
+    assert len(keys) == 3
+    assert f"{job_id}:aurora-v20-set-audit:v1" in keys
 
 
 def test_parallel_aurora_set_audit_is_idle_after_final_review(

@@ -1,17 +1,22 @@
-"""User-owned, explicitly submitted Douyin search pages."""
+"""User-owned benchmark pages: explicit keyword searches or pasted links."""
 
 from __future__ import annotations
 
 import hashlib
+import re
 from datetime import UTC, datetime
 from typing import Annotated, Any, Literal
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Request
+from fastapi.responses import FileResponse
 from pydantic import Field, StringConstraints
 from sqlalchemy import Select, select
 from sqlalchemy.exc import IntegrityError
 
+from . import video_benchmark_covers as covers
+from . import video_benchmark_platforms as platforms
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, require_workspace_write
 from .errors import ApiError
 from .video_assistance import AssistanceResponse, process, provider, response
@@ -34,8 +39,19 @@ class BenchmarkSearchRequest(StrictVideoModel):
     keyword: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=120)
     ]
-    sort: Literal["relevance", "newest", "most_liked"] = "relevance"
+    platform: Literal["douyin", "xiaohongshu", "bilibili"] = "douyin"
+    # Accepted for older clients; every search is ordered by likes.
+    sort: Literal["relevance", "newest", "most_liked"] = "most_liked"
     publish_time: Literal["unlimited", "one_day", "one_week", "half_year"] = "unlimited"
+
+
+class BenchmarkLinksRequest(StrictVideoModel):
+    request_id: UUID
+    project_id: UUID
+    expected_revision: int = Field(ge=1)
+    text: Annotated[
+        str, StringConstraints(strip_whitespace=True, min_length=8, max_length=4000)
+    ]
 
 
 class BenchmarkSearchConfig(StrictVideoModel):
@@ -46,16 +62,17 @@ class BenchmarkSearchConfig(StrictVideoModel):
 
 class BenchmarkExtractionPick(StrictVideoModel):
     search_task_id: UUID
-    platform_id: str = Field(pattern=r"^[0-9]{6,25}$")
+    platform_id: str = Field(pattern=r"^[0-9A-Za-z]{6,32}$")
 
 
 class BenchmarkExtractionRequest(StrictVideoModel):
     project_id: UUID
     expected_revision: int = Field(ge=1)
-    items: list[BenchmarkExtractionPick] = Field(min_length=1, max_length=10)
+    items: list[BenchmarkExtractionPick] = Field(min_length=1, max_length=3)
 
 
-def owned_searches(workspace: VideoWorkspace) -> Select[VideoAssistanceRecord]:
+# Select[Any]: the Select type parameters differ between SQLAlchemy 2.0 and 2.1.
+def owned_searches(workspace: VideoWorkspace) -> Select[Any]:
     return select(VideoAssistanceRecord).where(
         VideoAssistanceRecord.workspace_id == workspace.workspace_id,
         VideoAssistanceRecord.owner_user_id == workspace.principal.user_id,
@@ -97,6 +114,14 @@ def save_page(
     )
     session.add(row)
     try:
+        video_credits.hold(
+            session,
+            request.app.state.settings,
+            workspace.workspace_id,
+            "benchmark_search",
+            "video_assistance",
+            row.id,
+        )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -111,7 +136,52 @@ def save_page(
     background.add_task(
         process, request.app.state.session_factory, row.id, provider(request)
     )
+    background.add_task(
+        video_credits.settle_after,
+        request.app.state.session_factory,
+        "video_assistance",
+        row.id,
+    )
     return response(row)
+
+
+@router.get("/benchmark-covers/{task_id}/{platform_id}")
+def benchmark_cover(
+    task_id: UUID,
+    platform_id: str,
+    request: Request,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> FileResponse:
+    """A search result's cover from our own origin (CSP, hotlink, expiry)."""
+    if not re.fullmatch(r"[0-9A-Za-z]{6,32}", platform_id):
+        raise ApiError(404, "VIDEO_BENCHMARK_COVER_NOT_FOUND", "没有封面。")
+    page = session.scalar(
+        owned_searches(workspace).where(
+            VideoAssistanceRecord.id == str(task_id),
+            VideoAssistanceRecord.kind == BENCHMARK_KIND,
+        )
+    )
+    item = next(
+        (
+            row
+            for row in ((page.result or {}).get("items") or [] if page else [])
+            if row.get("platform_id") == platform_id
+        ),
+        None,
+    )
+    settings = request.app.state.settings
+    hit = covers.cached(settings, str(task_id), platform_id) if page else None
+    if hit is None and item and item.get("cover_url"):
+        hit = covers.fetch(settings, str(task_id), platform_id, item["cover_url"])
+    if hit is None:
+        raise ApiError(404, "VIDEO_BENCHMARK_COVER_NOT_FOUND", "没有封面。")
+    path, content_type = hit
+    return FileResponse(
+        path,
+        media_type=content_type,
+        headers={"Cache-Control": "private, max-age=86400"},
+    )
 
 
 @router.get("/benchmark-config", response_model=BenchmarkSearchConfig)
@@ -158,6 +228,7 @@ def extract_candidates(
         )
     }
     entries = {}
+    details: dict[str, dict[str, Any]] = {}
     for pick in body.items:
         page = pages.get(str(pick.search_task_id))
         source = next(
@@ -170,18 +241,48 @@ def extract_candidates(
         )
         if page is None or source is None:
             raise ApiError(404, "VIDEO_BENCHMARK_NOT_FOUND", "未找到本项目的对标作品。")
+        platform = source.get("platform", "douyin")
         marker = f"tengli-benchmark-extraction:{project.id}:{pick.platform_id}"
-        url = video_source_url(source["source_url"])
+        if platform != "douyin":
+            marker = (
+                f"tengli-benchmark-extraction:{project.id}:{platform}:"
+                + pick.platform_id
+            )
+        url = (
+            video_source_url(source["source_url"])
+            if platform == "douyin"
+            else source["source_url"]
+        )
         entries[str(uuid5(NAMESPACE_URL, marker))] = (
             hashlib.sha256(marker.encode()).hexdigest(),
             {
                 "search_task_id": page.id,
+                "platform": platform,
                 "platform_id": pick.platform_id,
                 "source_url": url,
                 "keyword": page.result["keyword"],
                 "captured_at": page.result["captured_at"],
             },
         )
+        details[str(uuid5(NAMESPACE_URL, marker))] = {
+            "item": {
+                key: source.get(key)
+                for key in (
+                    "title",
+                    "description",
+                    "author_name",
+                    "author_follower_count",
+                    "duration_seconds",
+                    "posted_at",
+                    "like_count",
+                    "comment_count",
+                    "collect_count",
+                    "share_count",
+                    "view_count",
+                )
+            },
+            "media_url": (page.receipt.get("media_urls") or {}).get(pick.platform_id),
+        }
     existing_query = owned_searches(workspace).where(
         VideoAssistanceRecord.request_id.in_(entries)
     )
@@ -218,7 +319,11 @@ def extract_candidates(
                 kind="extract",
                 inputs={
                     "revision": project.revision,
+                    "platform": source_info["platform"],
                     "source_url": source_info["source_url"],
+                    "title": details[rid]["item"].get("title") or "",
+                    "media_url": details[rid]["media_url"],
+                    "benchmark_item": details[rid]["item"],
                     "benchmark_source": source_info,
                 },
             )
@@ -277,12 +382,16 @@ def submit_search(
         fingerprint,
         {
             "revision": project.revision,
+            "platform": body.platform,
+            "mode": "search",
             "search_params": {
                 "keyword": body.keyword,
-                "sort": body.sort,
-                "publish_time": body.publish_time,
+                "sort": "most_liked",
+                "publish_time": body.publish_time
+                if body.platform == "douyin"
+                else "unlimited",
                 "page_token": "",
-                "limit": 10,
+                "limit": 20,
             },
             "page": 1,
             "root_task_id": None,
@@ -290,6 +399,96 @@ def submit_search(
             "seen_ids": [],
         },
     )
+
+
+@router.post("/benchmark-links", response_model=AssistanceResponse)
+def submit_links(
+    body: BenchmarkLinksRequest,
+    request: Request,
+    background: BackgroundTasks,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> AssistanceResponse:
+    """Pasted share text with up to three post links; free detail lookups."""
+    require_workspace_write(workspace)
+    request_id = str(body.request_id)
+    fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
+    existing = session.scalar(
+        owned_searches(workspace).where(VideoAssistanceRecord.request_id == request_id)
+    )
+    if existing:
+        return replay(existing, fingerprint)
+    require_search(request)
+    found = platforms.links_in(body.text)
+    if not found:
+        raise ApiError(
+            422,
+            "VIDEO_SOURCE_URL_INVALID",
+            "没有找到链接，请粘贴抖音、小红书或 B站的分享链接。",
+        )
+    if len(found) > platforms.MAX_LINKS:
+        raise ApiError(422, "VIDEO_BENCHMARK_TOO_MANY_LINKS", "一次最多粘贴 3 条链接。")
+    links: list[dict[str, str]] = []
+    for link in found:
+        platform, post, url = platforms.resolve_link(link)
+        if all(row["id"] != post for row in links):
+            links.append({"platform": platform, "id": post, "url": url})
+    project = session.scalar(
+        select(VideoProjectRecord).where(
+            VideoProjectRecord.id == str(body.project_id), *scope(workspace)
+        )
+    )
+    if project is None:
+        raise ApiError(404, "VIDEO_PROJECT_NOT_FOUND", "未找到项目。")
+    if project.revision != body.expected_revision:
+        raise ApiError(409, "VIDEO_REVISION_CONFLICT", "项目已变化，请重新载入后确认。")
+    task_id = str(uuid4())
+    inputs = {
+        "revision": project.revision,
+        "platform": links[0]["platform"]
+        if len({r["platform"] for r in links}) == 1
+        else "mixed",
+        "mode": "links",
+        "links": links,
+        "search_params": {
+            "keyword": "粘贴的链接",
+            "sort": "most_liked",
+            "publish_time": "unlimited",
+            "page_token": "",
+        },
+        "page": 1,
+        "root_task_id": None,
+        "previous_task_id": None,
+        "seen_ids": [],
+    }
+    row = VideoAssistanceRecord(
+        id=task_id,
+        workspace_id=workspace.workspace_id,
+        owner_user_id=workspace.principal.user_id,
+        project_id=project.id,
+        request_id=request_id,
+        request_hash=fingerprint,
+        kind=BENCHMARK_KIND,
+        inputs=inputs,
+        result=page_identity(task_id, inputs),
+    )
+    session.add(row)
+    try:
+        session.commit()
+    except IntegrityError:
+        session.rollback()
+        existing = session.scalar(
+            owned_searches(workspace).where(
+                VideoAssistanceRecord.request_id == request_id
+            )
+        )
+        if existing is None:
+            raise
+        return replay(existing, fingerprint)
+    background.add_task(
+        process, request.app.state.session_factory, row.id, provider(request)
+    )
+    return response(row)
 
 
 @router.post("/benchmark-searches/{task_id}/next", response_model=AssistanceResponse)

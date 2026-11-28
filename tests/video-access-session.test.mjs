@@ -101,3 +101,13 @@ test("a failed initial verification never gains access, even on retry", async ()
   assert.equal(session.snapshot().status, "error");
   assert.equal(session.snapshot().userId, undefined);
 });
+
+test("internal review tools follow the server grant and default to off", async () => {
+  const internal = new VideoAccessSession(async () => ({ ...allowed, internalTools: true }));
+  internal.setPath("/video-studio/editing"); await internal.check();
+  assert.equal(internal.snapshot().internalTools, true);
+  const plain = new VideoAccessSession(async () => allowed);
+  plain.setPath("/video-studio/editing"); await plain.check();
+  assert.equal(plain.snapshot().internalTools, false);
+});
+

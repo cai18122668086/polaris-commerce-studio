@@ -15,6 +15,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, require_workspace_write
 from .errors import ApiError
 from .models import utc_now
@@ -48,6 +49,7 @@ class AssistanceRequest(StrictVideoModel):
 
 class BenchmarkExtractionSource(StrictVideoModel):
     search_task_id: UUID
+    platform: str = "douyin"
     platform_id: str
     source_url: str
     keyword: str
@@ -67,6 +69,8 @@ class AssistanceResponse(StrictVideoModel):
     can_resume: bool
     benchmark_source: BenchmarkExtractionSource | None = None
     writing_document_saved: bool | None = None
+    # Writing tasks only: which saved reference the task works on.
+    reference_document_id: UUID | None = None
     stage_history: list[dict] = Field(default_factory=list)
     receipt: dict = Field(default_factory=dict)
 
@@ -93,6 +97,7 @@ def response(
         can_resume=row.status in {"queued", "awaiting_resume"},
         benchmark_source=row.inputs.get("benchmark_source"),
         writing_document_saved=writing_document_saved,
+        reference_document_id=row.inputs.get("reference_document_id"),
         stage_history=row.receipt.get("stage_history", []),
         receipt={},  # Supplier receipts remain server-side.
     )
@@ -109,6 +114,48 @@ def checkpoint(
         setattr(row, key, value)
     row.receipt = {**row.receipt, "stage_history": history}
     session.commit()
+
+
+POLL_ATTEMPTS = 120
+POLL_INTERVAL_SECONDS = 3
+
+
+def _heartbeat(factory: sessionmaker[Session], task_id: str) -> None:
+    with factory() as session:
+        session.execute(
+            update(VideoAssistanceRecord)
+            .where(
+                VideoAssistanceRecord.id == task_id,
+                VideoAssistanceRecord.status == "running",
+            )
+            .values(updated_at=utc_now())
+        )
+        session.commit()
+
+
+def poll_extract(
+    factory: sessionmaker[Session],
+    task_id: str,
+    provider_task_id: str,
+    service: VideoAssistanceProvider,
+) -> dict[str, Any] | None:
+    """Poll a submitted extraction without holding a DB connection while waiting.
+
+    Returns the terminal provider payload, or None when polling is exhausted.
+    submit_unknown with a known ID is poll-only, never POST.
+    """
+
+    for _ in range(POLL_ATTEMPTS):
+        _heartbeat(factory, task_id)
+        try:
+            data = service.extract_status(provider_task_id)
+        except ApiError:
+            time.sleep(POLL_INTERVAL_SECONDS)
+            continue
+        if data.get("status") in {"succeeded", "failed"}:
+            return data
+        time.sleep(POLL_INTERVAL_SECONDS)
+    return None
 
 
 def process(
@@ -135,10 +182,22 @@ def process(
             if row.kind == BENCHMARK_KIND:
                 checkpoint(session, row, "submitting")
                 captured_at = utc_now()
-                data = service.benchmark_search(row.inputs["search_params"])
+                platform = row.inputs.get("platform", "douyin")
+                if row.inputs.get("mode") == "links":
+                    data = service.benchmark_links(row.inputs["links"])
+                elif platform != "douyin":
+                    data = service.benchmark_search(
+                        row.inputs["search_params"], platform=platform
+                    )
+                else:
+                    data = service.benchmark_search(row.inputs["search_params"])
                 result, receipt = benchmark_page(data, row.id, row.inputs, captured_at)
                 row.status = "completed"
                 checkpoint(session, row, "completed", result=result, receipt=receipt)
+                # Signed cover links expire; keep a copy while they still work.
+                from .video_benchmark_covers import prefetch
+
+                prefetch(service.settings, row.id, result.get("items") or [])
                 return
             elif row.kind != "extract":
                 checkpoint(session, row, "submitting")
@@ -150,6 +209,29 @@ def process(
                         "VIDEO_SCRIPT_INVALID",
                         "文案未通过格式或事实检查，请核对产品事实。",
                     )
+            elif row.inputs.get("platform") == "xiaohongshu":
+                # Our own ASR needs the editing worker's memory; it finishes
+                # the row. An unreachable broker leaves it resumable.
+                from .video_benchmark_transcribe import QUEUED, dispatch
+
+                checkpoint(session, row, QUEUED)
+                if not dispatch(row.id):
+                    row.status = "awaiting_resume"
+                    session.commit()
+                return
+            elif row.inputs.get("platform", "douyin") != "douyin":
+                # B站 subtitles answer synchronously.
+                checkpoint(session, row, "extracting")
+                data = service.extract(
+                    row.inputs, heartbeat=lambda: _heartbeat(factory, task_id)
+                )
+                checkpoint(
+                    session,
+                    row,
+                    "received",
+                    result=transcript_result(data, row.inputs["source_url"]),
+                    receipt={**row.receipt, "billing": data.get("billing")},
+                )
             else:
                 if not row.provider_task_id:
                     checkpoint(session, row, "submitting")
@@ -183,14 +265,14 @@ def process(
                             "provider_id": data.get("id"),
                         },
                     )
-                for _ in range(120):
-                    row.updated_at = utc_now()
-                    session.commit()
-                    try:
-                        data = service.extract_status(row.provider_task_id or "")
-                    except ApiError:
-                        time.sleep(3)
-                        continue
+                # Release this session's connection for the whole poll; each
+                # heartbeat uses its own short session.
+                session.commit()
+                polled = poll_extract(
+                    factory, task_id, row.provider_task_id or "", service
+                )
+                if polled is not None:
+                    data = polled
                     status = data.get("status")
                     if status == "succeeded":
                         checkpoint(
@@ -204,15 +286,12 @@ def process(
                                 or row.receipt.get("billing"),
                             },
                         )
-                        break
-                    if status == "failed":
+                    else:
                         raise ApiError(
                             502,
                             "VIDEO_EXTRACT_FAILED",
                             "视频语音提取失败，请核对链接或粘贴原文。",
                         )
-                    # submit_unknown with a known ID is poll-only, never POST.
-                    time.sleep(3)
                 else:
                     row.status = "awaiting_resume"
                     row.receipt = {
@@ -342,6 +421,15 @@ def submit(
     )
     session.add(row)
     try:
+        if body.kind in {"create", "rewrite"}:
+            video_credits.hold(
+                session,
+                settings,
+                workspace.workspace_id,
+                "writing_generate",
+                "video_assistance",
+                row.id,
+            )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -357,6 +445,12 @@ def submit(
         return response(existing)
     background.add_task(
         process, request.app.state.session_factory, row.id, provider(request)
+    )
+    background.add_task(
+        video_credits.settle_after,
+        request.app.state.session_factory,
+        "video_assistance",
+        row.id,
     )
     return response(row)
 
@@ -381,13 +475,18 @@ def tasks(
             if row.updated_at.tzinfo is None
             else row.updated_at
         )
+        # Worker transcription waits in the editing queue behind renders and
+        # heartbeats while running; it gets a longer grace and stays resumable.
+        asr = row.stage in {"asr_queued", "asr_running"}
+        auto = row.kind == "auto_writing"  # heartbeats every 20s while alive
+        limit = 900 if asr else 120 if auto else 180
         if (
             row.status == "running"
-            and (datetime.now(UTC) - stamp).total_seconds() > 180
+            and (datetime.now(UTC) - stamp).total_seconds() > limit
         ):
             row.status = (
                 "awaiting_resume"
-                if row.kind == "extract" and row.provider_task_id
+                if auto or (row.kind == "extract" and (row.provider_task_id or asr))
                 else "unknown"
             )
     session.commit()
@@ -428,6 +527,8 @@ def resume(
     )
     if not row:
         raise ApiError(404, "VIDEO_ASSISTANCE_NOT_FOUND", "未找到文案任务。")
+    if row.kind == "auto_writing":
+        raise ApiError(409, "VIDEO_AUTO_RESUME_ELSEWHERE", "请在爆款文案页点「继续」。")
     if row.status not in {"queued", "awaiting_resume"}:
         raise ApiError(
             409, "VIDEO_ASSISTANCE_NOT_RESUMABLE", "请保留原任务核对，不要重复提交。"
@@ -445,5 +546,11 @@ def resume(
     if cast(CursorResult[Any], changed).rowcount == 1:
         background.add_task(
             process, request.app.state.session_factory, row.id, provider(request)
+        )
+        background.add_task(
+            video_credits.settle_after,
+            request.app.state.session_factory,
+            "video_assistance",
+            row.id,
         )
     return response(row)

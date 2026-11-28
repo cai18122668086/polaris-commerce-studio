@@ -7,7 +7,7 @@ from contextlib import contextmanager
 from functools import lru_cache
 from typing import Any
 
-from PIL import Image, ImageDraw, ImageFont, ImageOps
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, ImageOps
 
 
 def fit(
@@ -41,6 +41,7 @@ def dimensions(path: str, kind: str = "image") -> tuple[int, int]:
 def prepare(template: str, cfg: dict, policy: dict) -> None:
     if template == "bihuo-10-v1":
         policy["paper_card_fit"] = "content-lines/1"
+        policy["paper_card_items"] = PAPER_CARD_POLICY
     if template == "bihuo-36-v1":
         policy["silver_caption_fit"] = "bounded-native-fonts/1"
     if template in {"bihuo-03-v1", "bihuo-04-v1"}:
@@ -49,6 +50,10 @@ def prepare(template: str, cfg: dict, policy: dict) -> None:
         policy["teal_materials"] = "content-led/1"
     if template in {"bihuo-16-v1", "bihuo-19-v1", "bihuo-40-v1"}:
         policy["reading_cards"] = "content-led/1"
+    if template == "bihuo-47-v1":
+        policy["business_caption_fit"] = "balanced-overflow-cut/1"
+    if template in CAPTION_BACKING:
+        policy["caption_backing"] = "template-palette-plate/1"
 
 
 def app_geometry(material: dict, bottom: bool) -> tuple[list[int], list[int]]:
@@ -65,29 +70,293 @@ def app_geometry(material: dict, bottom: bool) -> tuple[list[int], list[int]]:
     )
 
 
+SILVER_MAX_WIDTH = 1030
+_BREAK_AFTER = "，。、；：！？,.;:!? "
+
+
+def split_caption_line(
+    line: dict, pieces: int, prefer_punctuation: bool = True
+) -> list[dict] | None:
+    """Split one caption line into ``pieces`` lines without changing a word.
+
+    Cuts land near equal lengths, prefer the place right after punctuation and
+    never fall inside an emphasis span; each span moves to its own line with
+    its offsets re-based. None when no such cut exists.
+    """
+    text = line["text"]
+    spans = [list(span) for span in line.get("emphasis_spans", [])]
+    cuts: list[int] = []
+    for k in range(1, pieces):
+        target = len(text) * k / pieces
+        best: tuple[float, int] | None = None
+        for pos in range(1, len(text)):
+            if (cuts and pos <= cuts[-1]) or any(a < pos < b for a, b in spans):
+                continue
+            after_mark = prefer_punctuation and text[pos - 1] in _BREAK_AFTER
+            score = abs(pos - target) - (len(text) / pieces / 2 if after_mark else 0)
+            if best is None or score < best[0]:
+                best = (score, pos)
+        if best is None:
+            return None
+        cuts.append(best[1])
+    bounds = [0, *cuts, len(text)]
+    return [
+        {
+            **line,
+            "text": text[a:b],
+            "emphasis_spans": [[x - a, y - a] for x, y in spans if a <= x and y <= b],
+        }
+        for a, b in zip(bounds, bounds[1:], strict=False)
+    ]
+
+
 def silver_whole_line(native: Any, original: Any, cfg: dict, cue: dict) -> Any:
     lines = cue.get("lines") or [
         {"text": cue["text"], "emphasis_spans": cue.get("emphasis_spans", [])}
     ]
-    for reduction in range(7):
-        local = dict(
-            cfg,
-            white_size=cfg["white_size"] - reduction,
-            gold_size=cfg["gold_size"] - reduction,
-        )
-        widths = [
-            sum(
-                native.font(
-                    cfg["fonts"]["caption"],
-                    local["gold_size"] if active else local["white_size"],
-                ).getlength(text)
-                for text, active in native.visual.caption_parts({**cue, **line})
+
+    def fitted(rows: list[dict]) -> dict | None:
+        for reduction in range(7):
+            local = dict(
+                cfg,
+                white_size=cfg["white_size"] - reduction,
+                gold_size=cfg["gold_size"] - reduction,
             )
-            for line in lines
-        ]
-        if max(widths, default=0) <= 1030:
-            return original(local, cue)
+            widths = [
+                sum(
+                    native.font(
+                        cfg["fonts"]["caption"],
+                        local["gold_size"] if active else local["white_size"],
+                    ).getlength(text)
+                    for text, active in native.visual.caption_parts({**cue, **row})
+                )
+                for row in rows
+            ]
+            if max(widths, default=0) <= SILVER_MAX_WIDTH:
+                return local
+        return None
+
+    local = fitted(lines)
+    if local is not None:
+        return original(local, cue)
+    # A sentence too long for one line even at the smallest size (long script
+    # lines such as 「所以挑家具这件事，得先把标准想清楚」) used to fail the
+    # native single-line gate and the whole render. The engine lays out two
+    # (or three) lines itself; the words, clocks and emphasis stay the same.
+    if len(lines) == 1:
+        for pieces in (2, 3):
+            for prefer in (True, False):
+                rows = split_caption_line(lines[0], pieces, prefer)
+                local = fitted(rows) if rows else None
+                if rows and local is not None:
+                    return original(local, {**cue, "lines": rows})
     return original(cfg, cue)  # Truly overlong content still fails the native gate.
+
+
+# Native single-line caption gates of other installed suites, measured exactly
+# like each bundle measures itself (bundle files stay byte-identical):
+#   bihuo-23 快讯直播 primitives.captions  asserts one line <= 1010 px (66/76 px,
+#            0.12 shear) and fails the whole render; its runtime already stacks
+#            ``lines`` (88 px apart), so long sentences become 2–3 lines.
+#   bihuo-24 深青标题 runtime.compile_request shrinks every caption of the video
+#            to fit its widest line (64 -> 48 px) and rejects past that; at most
+#            two lines. Splitting only the wide line keeps the others at 64 px.
+CAPTION_WRAP = {"bihuo-23-v1": (1010, 3), "bihuo-24-v1": (1040, 2)}
+
+
+def navy_line_width(native: Any, font: str, line: dict) -> int:
+    F = native.F
+    pieces = 0
+    width = 0
+    for text, active in F.V.caption_parts(
+        {"text": line["text"], "emphasis_spans": line.get("emphasis_spans", [])}
+    ):
+        im = F.tile(text, font, 76 if active else 66, (255, 255, 255, 255))
+        ext = round(0.12 * im.height) + 2
+        im = im.transform(
+            (im.width + ext, im.height),
+            Image.Transform.AFFINE,
+            (1, 0.12, -ext, 0, 1, 0),
+            Image.Resampling.BICUBIC,
+        )
+        box = im.getchannel("A").getbbox()
+        width += (box[2] - box[0]) if box else im.width
+        pieces += 1
+    return width + max(0, pieces - 1)
+
+
+def qingbai_line_width(native: Any, font: str, line: dict, size: int = 64) -> int:
+    E = native.E
+    return sum(
+        E.text_run(
+            text, font, size + 12 if active else size, (255, 255, 255, 255)
+        ).width
+        for text, active in E.V.caption_parts(
+            {"text": line["text"], "emphasis_spans": line.get("emphasis_spans", [])}
+        )
+    )
+
+
+def wrap_caption_lines(
+    lines: list[dict], measure: Callable[[dict], float], limit: float, most: int
+) -> list[dict]:
+    """Split only the lines wider than ``limit``; words, spans and order unchanged."""
+    result: list[dict] = []
+    for index, line in enumerate(lines):
+        room = most - len(result) - (len(lines) - index - 1)
+        if measure(line) <= limit or room < 2:
+            result.append(line)
+            continue
+        best = None
+        for pieces in range(2, room + 1):
+            for prefer in (True, False):
+                rows = split_caption_line(line, pieces, prefer)
+                if rows and all(r["text"].strip() for r in rows):
+                    widest = max(measure(r) for r in rows)
+                    if best is None or widest < best[0]:
+                        best = (widest, rows)
+                    if widest <= limit:
+                        break
+            if best and best[0] <= limit:
+                break
+        result.extend(best[1] if best else [line])
+    return result
+
+
+def wrap_resolved_captions(
+    template_id: str, native: Any, resolved: dict, fonts: dict
+) -> dict:
+    limit, most = CAPTION_WRAP[template_id]
+    if template_id == "bihuo-23-v1":
+        font = native.core._style_fonts(fonts)["caption"]
+
+        def measure(line: dict) -> float:
+            return navy_line_width(native, font, line)
+    else:
+        font = str(fonts.get("body") or fonts.get("caption") or "")
+
+        def measure(line: dict) -> float:
+            return qingbai_line_width(native, font, line)
+
+    captions = []
+    changed = False
+    for row in resolved.get("captions", []):
+        lines = row.get("lines") or [
+            {"text": row["text"], "emphasis_spans": row.get("emphasis_spans", [])}
+        ]
+        lines = [
+            x if isinstance(x, dict) else {"text": x, "emphasis_spans": []}
+            for x in lines
+        ]
+        wrapped = wrap_caption_lines(lines, measure, limit, most)
+        if len(wrapped) != len(lines):
+            changed = True
+            row = {**row, "lines": wrapped}
+        captions.append(row)
+    return {**resolved, "captions": captions} if changed else resolved
+
+
+BUSINESS_WIDTH = 1044
+
+
+def _business_segments(text: str, ranges: list, start: int, end: int) -> list:
+    segments = []
+    k = start
+    for a, b in ranges:
+        a, b = max(a, start), min(b, end)
+        if a >= b:
+            continue
+        if k < a:
+            segments.append((text[k:a], False))
+        segments.append((text[a:b], True))
+        k = b
+    if k < end:
+        segments.append((text[k:end], False))
+    return [(s, mark) for s, mark in segments if s]
+
+
+def _business_lines(
+    F: Any, cfg: dict, text: str, ranges: list, cuts: list, floor: int
+) -> list[tuple[list, int]]:
+    """bihuo-47's own line loop: size carries over between lines, -2 px steps."""
+    size = 84
+    start = 0
+    lines = []
+    for end in cuts:
+        segments = _business_segments(text, ranges, start, end)
+
+        def tiles(size: int, segments: list = segments) -> list:
+            return [
+                (
+                    F.tile(s, cfg, size, (235, 203, 103, 255) if mark else "white", 3),
+                    mark,
+                )
+                for s, mark in segments
+            ]
+
+        row = tiles(size)
+        while sum(v.width for v, _ in row) > BUSINESS_WIDTH and size > floor:
+            size -= 2
+            row = tiles(size)
+        lines.append((row, size))
+        start = end
+    return lines
+
+
+def business_caps(native: Any, original: Callable, cfg: dict, n: int) -> tuple:
+    """bihuo-47 cuts a long caption at the emphasis end nearest the middle and
+    shrinks to 42 px; a lopsided cut (emphasis near the start) left the second
+    line wider than the frame, clipped at both edges. Only then the host lays
+    the same words out at a balanced cut; every fitting caption is native."""
+    F = native.F
+    r = next((r for r in cfg["captions"] if r["frames"][0] <= n < r["frames"][1]), None)
+    if not r:
+        return original(cfg, n)
+    text, ranges = r["text"], r["emphasis_spans"]
+    if F.tile(text, cfg, 84, "white", 3).width <= BUSINESS_WIDTH:
+        return original(cfg, n)
+    target = len(text) // 2
+    candidates = [b for a, b in ranges if 2 <= b < len(text) - 1]
+    cut = min(candidates, key=lambda x: abs(x - target)) if candidates else target
+    lines = _business_lines(F, cfg, text, ranges, [cut, len(text)], 42)
+    if all(sum(v.width for v, _ in row) <= BUSINESS_WIDTH for row, _ in lines):
+        return original(cfg, n)
+    rows = split_caption_line(
+        {"text": text, "emphasis_spans": [list(x) for x in ranges]}, 2
+    ) or split_caption_line({"text": text, "emphasis_spans": []}, 2)
+    cut = len(rows[0]["text"]) if rows else target
+    lines = _business_lines(F, cfg, text, ranges, [cut, len(text)], 30)
+    out = {k: F.blank() for k in ["caption_shadow", "caption_body", "caption_emphasis"]}
+    y = 1508
+    for row, size in lines:
+        x = (1080 - sum(v.width for v, _ in row)) / 2
+        for im, mark in row:
+            out["caption_emphasis" if mark else "caption_body"].alpha_composite(
+                im, (round(x), y)
+            )
+            shadow = Image.new("RGBA", im.size, (0, 0, 0, 255))
+            shadow.putalpha(im.getchannel("A").point(lambda z: round(z * 0.8)))
+            out["caption_shadow"].alpha_composite(
+                shadow.filter(ImageFilter.GaussianBlur(2)), (round(x + 4), y + 6)
+            )
+            x += im.width
+        y += size + 20
+    q = min(1, max(0, (n - r["frames"][0] + 1) / 8))
+    if r.get("slide_entry"):
+        p = native.core.pilot.ease(r["frames"][0], r["frames"][0] + 14, n)
+        dx = round(210 * (1 - p))
+        for k, im in out.items():
+            moved = F.blank()
+            moved.alpha_composite(im, (dx, 0))
+            mask = Image.new("L", (1080, 1920))
+            ImageDraw.Draw(mask).rectangle(
+                (r.get("clip_left", 30), 0, 1079, 1919), fill=255
+            )
+            moved.putalpha(ImageChops.multiply(moved.getchannel("A"), mask))
+            out[k] = moved
+    return {k: F.fade(v, q) for k, v in out.items()}, dict(
+        text=text, frames=r["frames"], line_count=len(lines), host_balanced_cut=cut
+    )
 
 
 def paper_card_layers(native: Any, original: Any, t: float, cfg: dict) -> dict:
@@ -123,18 +392,138 @@ def paper_card_layers(native: Any, original: Any, t: float, cfg: dict) -> dict:
 
     native.C.ink = fitted
     try:
-        return original(t, cfg)
+        roles = original(t, cfg)
     finally:
         native.C.ink = ink
+    if not (card.get("button") or "").strip():
+        # Without a closing phrase the golden button bar would be drawn empty,
+        # with the connector lines leading into it; leave that block out.
+        for key in ("card-button", "card-conclusion", "card-links"):
+            if key in roles:
+                roles[key] = Image.new("RGBA", roles[key].size)
+    return roles
+
+
+# 生活手记（bihuo-10）知识卡片（C6）：原生从 features 或字幕重点词里抽卡片词，常抽到
+# 「推荐」「就能玩手机。」这种半句；结尾句为空时金色按钮条仍会画出来（空条）。宿主侧
+# 只保留成句的词（宁缺毋滥），全被滤掉且没有结尾句时整张卡不出；金色条为空时整块不画。
+PAPER_CARD_POLICY = "meaningful-card-items/1"
+_CARD_PUNCT = "，。！？、,.!?；;：:…“”\"'「」（）() "
+_CARD_LEADING = (
+    "就是",
+    "所以",
+    "因为",
+    "然后",
+    "但是",
+    "而且",
+    "还是",
+    "就",
+    "才",
+    "都",
+    "也",
+    "还",
+    "又",
+    "而",
+    "但",
+    "并",
+    "再",
+    "更",
+    "很",
+    "太",
+    "把",
+    "被",
+    "让",
+    "给",
+    "对",
+    "在",
+    "是",
+    "的",
+    "和",
+    "跟",
+    "或",
+)
+_CARD_TRAILING = "了的吗呢吧啊着过呀哦嘛"
+
+
+def card_phrase_ok(text: str, captions: list[str]) -> bool:
+    """A card item must read as a phrase on its own, not a cut-out half clause."""
+    core = text.strip(_CARD_PUNCT)
+    if not 2 <= len(core) <= 12 or any(ch in _CARD_PUNCT for ch in core):
+        return False
+    if core.startswith(_CARD_LEADING) or core[-1] in _CARD_TRAILING:
+        return False
+    for caption in captions:
+        at = caption.find(core)
+        if at < 0:
+            continue
+        before = caption[at - 1] if at else ""
+        after = caption[at + len(core)] if at + len(core) < len(caption) else ""
+        starts = not before or before in _CARD_PUNCT or before == "的"
+        ends = not after or after in _CARD_PUNCT or after == "\n"
+        return starts and ends
+    return True  # planner-written phrase that is not a verbatim caption slice
+
+
+def paper_card_items(config: dict, resolved: dict) -> dict:
+    card = config.get("card")
+    if not isinstance(card, dict):
+        return config
+    captions = [row.get("text", "") for row in config.get("captions", [])]
+    items = [
+        row for row in card.get("items", []) if card_phrase_ok(row["text"], captions)
+    ]
+    if items == card.get("items", []):
+        return config
+    first = (resolved.get("conclusion") or {}).get("first") or {}
+    duration = float(config["duration"])
+    close = float(first.get("start") or duration * 0.8)
+    at = min([row["at"] for row in items] + [close])
+    links = [max(at + 0.4, close - 0.6), close - 0.2]
+    if links[1] <= links[0]:
+        links = [at + 0.2, at + 0.5]
+    card = {
+        **card,
+        "items": items,
+        "enabled": bool(items or card.get("button")),
+        "entry": at,
+        "links": links,
+        "button_at": float(first.get("start") or at + 0.8),
+        "dropped_items": [
+            row["text"] for row in card.get("items", []) if row not in items
+        ],
+    }
+    result = {**config, "card": card}
+    mats = config.get("materials") or []
+    if "stars_at" in config and all("end" in m for m in mats):
+        last = max([m["end"] for m in mats] + [float(resolved.get("opening_end") or 3)])
+        result["stars_at"] = max(last, at - 0.88)
+    return result
 
 
 @contextmanager
 def compilation(template_id: str) -> Iterator[None]:
+    from .registry import runtime
+
+    if template_id in CAPTION_WRAP or template_id == "bihuo-10-v1":
+        module = runtime(template_id)
+        compiler = vars(module)["compile_request"]
+
+        def wrapped(resolved: dict, *args: Any, fonts: dict, **kwargs: Any) -> Any:
+            if template_id == "bihuo-10-v1":
+                config = compiler(resolved, *args, fonts=fonts, **kwargs)
+                return paper_card_items(config, resolved)
+            ready = wrap_resolved_captions(template_id, module, resolved, fonts)
+            return compiler(ready, *args, fonts=fonts, **kwargs)
+
+        vars(module)["compile_request"] = wrapped
+        try:
+            yield
+        finally:
+            vars(module)["compile_request"] = compiler
+        return
     if template_id != "bihuo-36-v1":
         yield
         return
-    from .registry import runtime
-
     native = runtime(template_id).E
     original = native.whole_line
     native.whole_line = lambda c, cue: silver_whole_line(native, original, c, cue)
@@ -545,6 +934,90 @@ def teal_parts(
     )
 
 
+# 彩色主题字幕底衬（C1）：深青标题 24 / 薄荷双窗 13 / 蓝白光晕 15 的字幕在浅色底、
+# 商品图和同色底上看不清。宿主侧在字幕下面垫一块模板自身色系的半透明底衬（不改字形、
+# 配色、时间和动效；不引入蓝紫），bundle 文件与身份哈希不变，已有项目照常可渲染。
+CAPTION_BACKING = {
+    # template: (RGB from the template's own palette, opacity at full caption)
+    "bihuo-24-v1": ((0, 30, 36), 0.62),  # qingbai text edge colour
+    "bihuo-13-v1": ((44, 34, 25), 0.55),  # qingci glyph stroke colour
+    "bihuo-15-v1": ((22, 24, 28), 0.5),  # neutral ink under white/accent words
+}
+
+
+def caption_backing(
+    box: tuple | None, fill: tuple, opacity: float, pad: tuple = (30, 16)
+) -> Image.Image:
+    layer = Image.new("RGBA", (1080, 1920))
+    if not box or opacity <= 0:
+        return layer
+    x, y, x2, y2 = box
+    ImageDraw.Draw(layer).rounded_rectangle(
+        (
+            max(16, round(x - pad[0])),
+            max(0, round(y - pad[1])),
+            min(1064, round(x2 + pad[0])),
+            min(1920, round(y2 + pad[1])),
+        ),
+        radius=22,
+        fill=(*fill, round(255 * min(1.0, opacity))),
+    )
+    return layer
+
+
+def _shown(alpha: Image.Image) -> float:
+    peak = alpha.getextrema()[1]  # single-band (L) image: (min, max) of ints
+    return float(peak if isinstance(peak, (int, float)) else peak[1]) / 255
+
+
+def qingbai_backed_captions(native: Any, original: Callable, c: dict, n: int) -> tuple:
+    roles, meta = original(c, n)
+    text = Image.alpha_composite(
+        roles["caption_chinese_body"], roles["caption_chinese_emphasis"]
+    ).getchannel("A")
+    fill, strength = CAPTION_BACKING["bihuo-24-v1"]
+    under = caption_backing(text.getbbox(), fill, strength * _shown(text))
+    under.alpha_composite(roles["caption_chinese_shadow"])
+    # The native dict listed the shadow after the words, so the offset dark
+    # blur was composited over the white text (greyed, muddy captions).
+    ordered = {"caption_chinese_shadow": under}
+    ordered.update((k, v) for k, v in roles.items() if k != "caption_chinese_shadow")
+    return ordered, meta
+
+
+def qingci_backed_caption(native: Any, original: Callable, c: dict, n: int) -> tuple:
+    layer, meta = original(c, n)
+    glyphs = meta.get("glyphs") if isinstance(meta, dict) else None
+    if not glyphs:
+        return layer, meta
+    style = c.get("caption_style", {})
+    gap = style.get("line_gap", 90)
+    lines = len(meta.get("line_widths") or [0])
+    size = max(g["size"] for g in glyphs)
+    box = (
+        min(g["x"] for g in glyphs),
+        meta["baseline"] - gap * (lines - 1) - 0.92 * size,
+        max(g["x"] + g["advance"] for g in glyphs),
+        meta["baseline"] + 0.22 * size,
+    )
+    fill, strength = CAPTION_BACKING["bihuo-13-v1"]
+    out = caption_backing(box, fill, strength * _shown(layer.getchannel("A")))
+    out.alpha_composite(layer)
+    return out, meta
+
+
+def blue_backed_captions(
+    native: Any, original: Callable, cfg: dict, n: int, disabled_shadow: bool = False
+) -> tuple:
+    roles, meta = original(cfg, n, disabled_shadow)
+    text = Image.alpha_composite(roles["caption_body"], roles["caption_emphasis"])
+    alpha = text.getchannel("A")
+    fill, strength = CAPTION_BACKING["bihuo-15-v1"]
+    under = caption_backing(alpha.getbbox(), fill, strength * _shown(alpha))
+    under.alpha_composite(roles["caption_glow"])
+    return {**roles, "caption_glow": under}, meta
+
+
 @contextmanager
 def execution(module: Any, payload: dict) -> Iterator[None]:
     tid = payload["template_id"]
@@ -608,6 +1081,39 @@ def execution(module: Any, payload: dict) -> Iterator[None]:
                 native,
                 "whole_line",
                 lambda c, cue: silver_whole_line(native, original, c, cue),
+            )
+        elif tid == "bihuo-24-v1":
+            engine = module.E
+            original_qingbai = vars(engine)["captions"]
+            patch(
+                engine,
+                "captions",
+                lambda c, n: qingbai_backed_captions(engine, original_qingbai, c, n),
+            )
+        elif tid == "bihuo-13-v1":
+            engine = module.E
+            original_qingci = vars(engine)["caption"]
+            patch(
+                engine,
+                "caption",
+                lambda c, n: qingci_backed_caption(engine, original_qingci, c, n),
+            )
+        elif tid == "bihuo-15-v1":
+            engine = module.E
+            original_blue = vars(engine)["captions"]
+            patch(
+                engine,
+                "captions",
+                lambda c, n, d=False: blue_backed_captions(
+                    engine, original_blue, c, n, d
+                ),
+            )
+        elif tid == "bihuo-47-v1":
+            original_caps = vars(module)["_caps"]
+            patch(
+                module,
+                "_caps",
+                lambda c, n: business_caps(module, original_caps, c, n),
             )
         elif tid == "bihuo-10-v1":
             original_card = module.C.card_layers

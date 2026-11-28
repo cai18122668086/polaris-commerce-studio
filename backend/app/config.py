@@ -5,6 +5,8 @@ from typing import Literal
 from pydantic import Field, SecretStr, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from .video_credit_prices import DEFAULT_PRICES as DEFAULT_VIDEO_CREDIT_PRICES
+
 MAX_PROVIDER_ALLOWANCE = 20_000_000
 
 
@@ -82,6 +84,10 @@ class Settings(BaseSettings):
     video_providers_enabled: bool = False
     video_background_recovery_enabled: bool = False
     video_recovery_interval_seconds: float = Field(default=15, ge=1, le=300)
+    # Batch talking safety net (restart-safe queue); independent of the flag above.
+    video_talking_sweep_enabled: bool = True
+    # Batch editing (W3): keeps confirmed editing batches moving in the API.
+    video_editing_sweep_enabled: bool = True
     video_recovery_lease_seconds: float = Field(default=120, ge=30, le=600)
     video_recovery_workers: int = Field(default=2, ge=1, le=4)
     video_script_planning_enabled: bool = False
@@ -100,6 +106,18 @@ class Settings(BaseSettings):
     video_skyhuman_auto_register: bool = False
     # Exact prepared-model IDs only: never substitute an unrelated avatar.
     video_skyhuman_avatar_map: dict[str, str] = Field(default_factory=dict)
+    # 媒体下载的主机改道（默认不改）。只允许同一存储桶从地域入口改到全球加速入口，
+    # 用于部署机器连不上某个地域 OSS 时，例如
+    # {"sowa.oss-cn-beijing.aliyuncs.com": "sowa.oss-accelerate.aliyuncs.com"}。
+    video_media_host_routes: dict[str, str] = Field(default_factory=dict)
+    # 视频各操作的积分单价（POLARIS_VIDEO_CREDIT_PRICES，JSON；键见
+    # video_credit_prices.ACTIONS）。未配置的操作不显示数字，也不扣积分；
+    # 已定价的操作按 video_credit_billing 冻结、结算或退回。未设置该变量时用
+    # video_credit_prices.DEFAULT_PRICES（推导见 docs/video-pricing-20261125.md）；
+    # 设为 {} 则全部恢复为未定价、不扣积分。
+    video_credit_prices: dict[str, int] = Field(
+        default_factory=lambda: dict(DEFAULT_VIDEO_CREDIT_PRICES)
+    )
     video_lipsync_long_wait_seconds: float = Field(default=600, ge=30, le=1800)
     video_lipsync_poll_window_seconds: float = Field(default=900, ge=30, le=3600)
     video_lipsync_breaker_seconds: float = Field(default=1800, ge=0, le=86400)
@@ -120,6 +138,11 @@ class Settings(BaseSettings):
     video_editing_python: str = "python"
     video_editing_ffmpeg: str = "ffmpeg"
     video_editing_ffprobe: str = "ffprobe"
+    # Speech-led overlay timing for full-suite renders; "off" restores the
+    # original compiled times (rollback switch).
+    video_editing_sync_policy: Literal["bihuo-sync/1", "off"] = "bihuo-sync/1"
+    # Render-time face safety + overlay dissolves; "off" restores phase-1 output.
+    video_editing_frame_policy: Literal["bihuo-frame/1", "off"] = "bihuo-frame/1"
     video_editing_asr_provider: Literal["faster-whisper", "funasr"] = "faster-whisper"
     video_editing_asr_model: str = "small"
     video_editing_asr_device: Literal["cpu", "cuda"] = "cpu"
@@ -133,11 +156,41 @@ class Settings(BaseSettings):
     video_editing_plan_model: str = "gpt-6.1-sol"
     video_writing_workflow_enabled: bool = False
     video_writing_library_dir: Path = Path(".data/motion-library/3b4d100ebf6c/writing")
+    # W4 补充素材（v3）。免费素材库 key 只从服务器文件读（不进仓库/日志）；
+    # 文件不存在或为空时该来源自动关闭，界面显示「暂未开通」。
+    video_stock_pexels_key_file: Path | None = None
+    video_stock_pixabay_key_file: Path | None = None
+    # 无 key 兜底（CC0 / CC BY）。默认开；服务器访问被拒时按「暂不可用」处理。
+    video_stock_openverse_enabled: bool = True
+    video_stock_commons_enabled: bool = True
+    # 素材下载缓存目录（默认 <video_editing_tasks_dir>/stock-cache），
+    # 超上限按最久未用清理。
+    video_stock_cache_dir: Path | None = None
+    video_stock_cache_max_bytes: int = Field(default=1_073_741_824, ge=0)
+    # 磁盘清理（B14，editing-maintenance 执行）：间隔 0 = 关闭。
+    video_media_cleanup_interval_seconds: int = Field(default=3600, ge=0)
+    # 未被作品引用的封面候选保留天数。
+    video_cover_candidate_retention_days: float = Field(default=14, gt=0)
+    # 作品海报缓存上限，超过按最近访问时间淘汰（随时可重新生成）。
+    video_poster_cache_max_bytes: int = Field(default=536_870_912, ge=0)
+    # 免费视频空镜：现有剪辑流水线把任何视频素材都按「录屏」整段播放，
+    # 空镜会盖住人物，所以默认只取图片；剪辑线支持视频进图片槽后再打开。
+    video_stock_include_video: bool = False
+    # AI 配图（7 积分/张）。默认关，dev/灰度显式开启。
+    video_supplement_ai_image_enabled: bool = False
+    video_supplement_ai_image_max_per_video: int = Field(default=6, ge=1, le=6)
+    # MG 动效成片后叠加（只对选了 MG 的 bihuo 成套模板任务生效）。默认关。
+    video_supplement_mg_enabled: bool = False
     video_editing_lease_seconds: int = Field(default=120, ge=30, le=600)
     video_editing_subprocess_timeout: int = Field(default=3600, ge=30, le=14400)
     video_cosyvoice_enabled: bool = False
+    # 「新建声音克隆」单独的开关（用户 11-28 决定保持关闭）。只管新建；已有克隆声音的
+    # 列表、试听与口播合成仍只看 video_cosyvoice_enabled。
+    video_voice_clone_enabled: bool = False
     video_cosyvoice_api_key: SecretStr = SecretStr("")
-    video_cosyvoice_platform: Literal["qianwen", "bailian_beijing"] = "qianwen"
+    video_cosyvoice_platform: Literal["qianwen", "bailian_beijing", "dashscope"] = (
+        "qianwen"
+    )
     video_cosyvoice_workspace_id: str = ""
     video_cosyvoice_model: Literal["cosyvoice-v3.5-flash"] = "cosyvoice-v3.5-flash"
 
@@ -245,12 +298,24 @@ class Settings(BaseSettings):
     # rotates models without notice: change POLARIS_ANALYSIS_MODEL to move the
     # model instead of editing this default.
     analysis_model: str = "gpt-5.6-sol"
+    # Main-image planning only (one-pass authored plan and native-fast
+    # identity).  Empty keeps the shared analysis/failover models above, so
+    # every other feature and an unset deployment behave exactly as before.
+    # main_image_failover_planner_model applies to failover routes only, for a
+    # failover account whose model catalogue differs from the primary's;
+    # empty there falls back to main_image_planner_model.
+    main_image_planner_model: str = ""
+    main_image_failover_planner_model: str = ""
     analysis_timeout_seconds: float = Field(default=600, gt=0, le=1800)
     planner_streaming_enabled: bool = False
     planner_recovery_enabled: bool = False
     planner_transient_retries: int = Field(default=1, ge=0, le=1)
     planner_retry_backoff_seconds: float = Field(default=2, ge=0, le=10)
     planner_primary_timeout_seconds: float = Field(default=300, ge=30, le=600)
+    # Per-call cap for page/style/set review calls (observed 20-140 s).  A hung
+    # route fails over after this instead of holding the page for the full
+    # planner budget.  Unset falls back to the general planner timeout.
+    planner_review_timeout_seconds: float | None = Field(default=180, ge=30, le=900)
     image_api_key: SecretStr = SecretStr("")
     image_base_url: str = "https://api.artflow.vip"
     image_model: str = "gpt-image-2.5-flare"
@@ -279,9 +344,7 @@ class Settings(BaseSettings):
     credit_epay_active_key_id: str = ""
     credit_epay_keys: dict[str, SecretStr] = Field(default_factory=dict)
     credit_epay_base_url: str = "https://pay.jgshai.cn"
-    credit_epay_notify_url: str = (
-        "https://www.jgshai.cn/api/v1/payments/epay/notify"
-    )
+    credit_epay_notify_url: str = "https://www.jgshai.cn/api/v1/payments/epay/notify"
     credit_epay_return_url: str = "https://www.jgshai.cn/account"
 
     @field_validator("workspace_credit_pilot_ids")
@@ -312,7 +375,11 @@ class Settings(BaseSettings):
         le=2_000_000,
     )
     xinghe_concurrency: int = Field(default=6, ge=1, le=3000)
-    image_global_concurrency: int = Field(default=3000, ge=1, le=3000)
+    # Fleet-wide cap on in-flight upstream image requests, shared through Redis
+    # by every API and Celery process. 3000 meant "unlimited"; 40 is two full
+    # detail batches (xinghe_concurrency=20) and stays below the supplier's
+    # observed burst tolerance. Raise only together with the supplier quota.
+    image_global_concurrency: int = Field(default=40, ge=1, le=3000)
     replica_analysis_concurrency: int = Field(default=4, ge=1, le=16)
     # Kept for compatibility with existing deployment environments. Exact
     # sessions now use the current protocol in every workspace.
@@ -322,6 +389,38 @@ class Settings(BaseSettings):
     xinghe_skill_root: Path = Field(default_factory=default_xinghe_skill_root)
     celery_broker_url: str = "redis://localhost:6379/0"
     celery_result_backend: str = "redis://localhost:6379/1"
+    # Per-queue Celery soft limits (seconds). The hard limit is soft + grace.
+    # Derived from upstream timeouts: one image call may take 600 s and is
+    # retried up to twice with backoff (~1.9 ks); planning adds analysis
+    # (600 s). Editing renders are bounded by video_editing_subprocess_timeout.
+    celery_soft_time_limit_image_seconds: int = Field(default=2400, ge=60, le=86400)
+    celery_soft_time_limit_detail_seconds: int = Field(default=3600, ge=60, le=86400)
+    celery_soft_time_limit_replica_seconds: int = Field(default=3000, ge=60, le=86400)
+    celery_soft_time_limit_editing_seconds: int = Field(default=4200, ge=60, le=86400)
+    celery_soft_time_limit_planning_seconds: int = Field(default=1800, ge=60, le=86400)
+    celery_soft_time_limit_cancel_seconds: int = Field(default=300, ge=30, le=3600)
+    celery_time_limit_grace_seconds: int = Field(default=120, ge=10, le=3600)
+    # Per-account running-job caps (image jobs per workspace, video
+    # generations per user). 0 disables; production compose sets 3 and 1.
+    user_active_image_job_limit: int = Field(default=0, ge=0, le=1000)
+    user_active_video_job_limit: int = Field(default=0, ge=0, le=1000)
+    # Fixed-window request rate limiting in Redis; fails open without Redis.
+    rate_limit_enabled: bool = False
+    rate_limit_redis_url: str | None = None
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=3600)
+    rate_limit_per_ip: int = Field(default=1800, ge=0, le=1_000_000)
+    rate_limit_per_user: int = Field(default=600, ge=0, le=1_000_000)
+    # Peers whose X-Forwarded-For is trusted (Caddy on the Docker network).
+    rate_limit_trusted_proxies: list[str] = Field(
+        default_factory=lambda: [
+            "127.0.0.0/8",
+            "::1/128",
+            "10.0.0.0/8",
+            "172.16.0.0/12",
+            "192.168.0.0/16",
+            "fc00::/7",
+        ]
+    )
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     max_image_pixels: int = Field(default=40_000_000, ge=1)
     justone_api_token: SecretStr = SecretStr("")

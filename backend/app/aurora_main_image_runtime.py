@@ -158,6 +158,7 @@ class AuroraV20HarnessRunner(AuroraHarnessRunner):
         "record-generation": frozenset({"session", "token", "image"}),
         "recover-generation": frozenset({"session", "token", "generated-dir"}),
         "audit-current": frozenset({"session", "judgment"}),
+        "accept-repair": frozenset({"session", "check"}),
         "prepare-repair": frozenset({"session", "repair-plan"}),
         "calibrate-search": frozenset({"session", "observation"}),
         "calibrate-style": frozenset({"session", "observation"}),

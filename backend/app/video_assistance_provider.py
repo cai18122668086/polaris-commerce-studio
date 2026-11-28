@@ -6,12 +6,14 @@ import hashlib
 import json
 import math
 import re
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
 import httpx
 from pydantic import Field
 
+from . import video_benchmark_platforms as platforms
 from .config import Settings
 from .errors import ApiError
 from .video_planner_policy import json_planning_options
@@ -249,7 +251,7 @@ class VideoAssistanceProvider:
     def plan(
         self, kind: str, inputs: dict[str, Any]
     ) -> tuple[dict[str, Any], dict[str, Any]]:
-        if kind in {"ref_analysis", "fact_draft"}:
+        if kind in {"ref_analysis", "fact_draft", "ref_compare"}:
             from .video_writing_provider import plan_writing
 
             return plan_writing(self, kind, inputs)
@@ -314,17 +316,70 @@ class VideoAssistanceProvider:
         except (ValueError, TypeError, KeyError, IndexError):
             return {"validation_error": "VIDEO_SCRIPT_INVALID"}, receipt
 
-    def benchmark_search(self, params: dict[str, Any]) -> dict[str, Any]:
+    def benchmark_search(
+        self, params: dict[str, Any], platform: str = "douyin"
+    ) -> dict[str, Any]:
         if not benchmark_search_configured(self.settings):
             raise ApiError(503, "VIDEO_ASSISTANCE_DISABLED", "对标搜索尚未配置。")
         return self.request(
             "extract",
             "POST",
             "/api/v1/social",
-            json={"platform": "douyin", "action": "search", "params": params},
+            json=platforms.search_body(
+                platform,
+                params["keyword"],
+                params.get("page_token", ""),
+                params.get("publish_time", "unlimited"),
+            ),
         )
 
-    def extract(self, inputs: dict[str, Any]) -> dict[str, Any]:
+    def benchmark_links(self, links: list[dict[str, str]]) -> dict[str, Any]:
+        """One detail call per pasted link; a page of rows like a search page."""
+        if not benchmark_search_configured(self.settings):
+            raise ApiError(503, "VIDEO_ASSISTANCE_DISABLED", "对标搜索尚未配置。")
+        rows: list[Any] = []
+        failures: list[str] = []
+        for link in links:
+            try:
+                data = self.request(
+                    "extract",
+                    "POST",
+                    "/api/v1/social",
+                    read_timeout=90,
+                    json=platforms.detail_body(link["platform"], link["url"]),
+                )
+            except ApiError as error:
+                failures.append(error.code)
+                continue
+            found = data.get("results")
+            row = found[0] if isinstance(found, list) and found else found
+            if isinstance(row, dict) and row:
+                if link["platform"] == "bilibili" and "id" not in row:
+                    row = {**row, "id": row.get("video_id") or row.get("bvid")}
+                rows.append(row)
+            else:
+                failures.append(str(data.get("empty_reason") or "empty"))
+        if not rows and failures:
+            raise ApiError(
+                422,
+                "VIDEO_BENCHMARK_LINK_UNAVAILABLE",
+                "链接里的作品读取不到，可能已删除、私密或链接不完整。",
+            )
+        return {"results": rows, "link_failures": failures}
+
+    def extract(
+        self, inputs: dict[str, Any], heartbeat: Callable[[], None] | None = None
+    ) -> dict[str, Any]:
+        platform = inputs.get("platform", "douyin")
+        if platform == "xiaohongshu":
+            raise ApiError(500, "VIDEO_ASSISTANCE_FAILED", "小红书转写由剪辑服务处理。")
+        if platform == "bilibili":
+            return self.request(
+                "extract",
+                "POST",
+                "/api/v1/social",
+                json=platforms.transcript_body("bilibili", inputs["source_url"]),
+            )
         return self.request(
             "extract",
             "POST",

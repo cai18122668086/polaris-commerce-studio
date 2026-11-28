@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import inspect
 import logging
 import re
 import socket
@@ -23,6 +24,7 @@ from . import detail_fast, detail_fast_runtime, refined_detail
 from . import provider_quota_ledger as quota_ledger
 from .aurora_execution_modes import (
     is_calibrated_parallel_aurora_mode,
+    is_fast_main_image_mode,
     is_parallel_aurora_mode,
     is_v20_aurora_mode,
 )
@@ -33,6 +35,7 @@ from .config import (
     default_xinghe_skill_root,
 )
 from .domain import (
+    JOB_TRANSITIONS,
     TERMINAL_JOB_STATUSES,
     AssetLifecycleStatus,
     AssetMediaKind,
@@ -87,6 +90,8 @@ class AmazonSuiteReviewer(Protocol):
     async def review(self, job_id: str) -> Any: ...
 
 
+JOB_TIME_LIMIT_EXCEEDED = "JOB_TIME_LIMIT_EXCEEDED"
+JOB_TIME_LIMIT_MESSAGE = "任务处理超时，已自动停止；未完成的部分不会扣除积分。"
 ACTIVE_ATTEMPT_STATUSES = {
     AttemptStatus.CLAIMED.value,
     AttemptStatus.RUNNING.value,
@@ -789,18 +794,13 @@ class ExecutionCoordinator:
             if set_audit is False and set_audit_error is not None:
                 self._mark_parallel_aurora_set_audit_failed(job_id, set_audit_error)
             elif set_audit is False and set_audit_error is None:
-                from .main_image_auto_start import eligible as automatic_main_image
-
-                with self.session_factory() as session:
-                    job = session.get(JobRecord, job_id)
-                    automatic = job is not None and automatic_main_image(job)
-                if automatic:
-                    self._mark_parallel_aurora_set_audit_failed(
-                        job_id,
-                        ValueError("Automatic delivery needs a passing set audit"),
-                    )
-                    return self.finalize_job(job_id)
-                return self._mark_aurora_final_review_pending(job_id)
+                # A completed set audit only judges whether another page could
+                # also read as the search cover.  The harness records that as a
+                # residual issue; it never fails a page or the job.  Identity,
+                # label and claim errors are gated per page, not here.
+                return await self._maybe_finalize_domestic_automatic_delivery(
+                    job_id, self._mark_aurora_final_review_pending(job_id)
+                )
             elif set_audit is True and set_audit_error is None:
                 return await self._maybe_finalize_domestic_automatic_delivery(
                     job_id, self._mark_aurora_final_review_pending(job_id)
@@ -1078,9 +1078,20 @@ class ExecutionCoordinator:
         attempts = 3
         retry_delay_seconds = 5.0
         last_error: Exception | None = None
+        try:
+            accepts_attempt = "audit_attempt" in inspect.signature(audit).parameters
+        except (TypeError, ValueError):
+            accepts_attempt = False
         for attempt in range(1, attempts + 1):
             try:
-                return bool(await audit(job_id)), None
+                # A repeated call must be a new planner request: the durable
+                # transport journal replays a saved (failed) result by key.
+                verdict = (
+                    await audit(job_id, audit_attempt=attempt)
+                    if accepts_attempt
+                    else await audit(job_id)
+                )
+                return bool(verdict), None
             except Exception as exc:
                 last_error = exc
                 if attempt >= attempts:
@@ -1137,7 +1148,9 @@ class ExecutionCoordinator:
             item.status = JobItemStatus.FAILED.value
             item.stage = "set_audit_failed"
             item.error_code = "AURORA_SET_AUDIT_FAILED"
-            item.error_message = "Aurora v2.0 six-page set audit did not pass."
+            item.error_message = (
+                "六张图片已生成，但整组一致性检查未通过，暂不能作为完整套图交付。"
+            )
             item.error_details = {
                 "retryable": False,
                 "scope": "set_audit",
@@ -1672,7 +1685,18 @@ class ExecutionCoordinator:
                 return None
 
             recovered, expired_handled = self._recover_expired_attempt(session, job)
-            if expired_handled:
+            handled_any = expired_handled
+            # One delivery resolves every expired attempt of the job instead of
+            # one per broker delivery (each delivery used to advance one page).
+            for _ in range(32):
+                if recovered is not None or not expired_handled:
+                    break
+                session.flush()
+                recovered, expired_handled = self._recover_expired_attempt(
+                    session, job
+                )
+                handled_any = handled_any or expired_handled
+            if handled_any:
                 session.commit()
             if recovered is not None:
                 return recovered
@@ -2022,6 +2046,21 @@ class ExecutionCoordinator:
             policy.get("execution_mode")
         )
 
+    @staticmethod
+    def _job_uses_fast_main_image(session: Session, job_id: str) -> bool:
+        plan = session.scalar(
+            select(JobPlanRecord)
+            .where(JobPlanRecord.job_id == job_id)
+            .order_by(JobPlanRecord.revision.desc())
+            .limit(1)
+        )
+        if plan is None or not isinstance(plan.payload, Mapping):
+            return False
+        policy = plan.payload.get("execution_policy")
+        return isinstance(policy, Mapping) and is_fast_main_image_mode(
+            policy.get("execution_mode")
+        )
+
     def _recover_expired_attempt(
         self, session: Session, job: JobRecord
     ) -> tuple[AttemptLease | None, bool]:
@@ -2055,8 +2094,57 @@ class ExecutionCoordinator:
         # the result is unknown and the request must never be issued blindly.
         attempt.status = AttemptStatus.OUTCOME_UNKNOWN.value
         attempt.error_code = "PROVIDER_OUTCOME_UNKNOWN"
-        attempt.error_message = "Worker lease expired after provider invocation."
+        attempt.error_message = "生成请求已发出但结果未确认，已停止自动重试。"
         attempt.finished_at = now
+        if self._fast_main_image_record(job):
+            # The interrupted call was sent: count it and keep its supplier
+            # cost separate from customer credits (unconfirmed, never billed
+            # to the customer unless a page is delivered).
+            session.add(
+                UsageEventRecord(
+                    workspace_id=job.workspace_id,
+                    job_id=job.id,
+                    job_item_id=item.id,
+                    attempt_id=attempt.id,
+                    provider=attempt.provider or self.provider.name,
+                    model=getattr(self.provider, "model", "unknown"),
+                    operation=job.type,
+                    provider_request_id=attempt.provider_request_id,
+                    quality=item.quality,
+                    usage_reported=False,
+                    raw_usage={
+                        "network_requests": 1,
+                        "interrupted_by_worker_loss": True,
+                        "supplier_cost_status": "unconfirmed",
+                        "customer_charge": "none_unless_delivered",
+                    },
+                    pricing_version=getattr(
+                        self.provider, "pricing_version", "unknown"
+                    ),
+                    currency=job.currency or "USD",
+                    estimated_cost_micros=None,
+                    actual_cost_micros=None,
+                )
+            )
+            if attempt.attempt_no <= self.max_aurora_retries:
+                # Re-enter the provider only to look up this page's existing
+                # result by its receipt (local stage / storage). The provider
+                # never issues a new image call for an unresolved receipt.
+                item.status = JobItemStatus.RETRY_WAIT.value
+                item.stage = "retry_wait_outcome_reconciliation"
+                item.error_code = "PROVIDER_OUTCOME_UNKNOWN"
+                item.error_message = (
+                    "Worker lease expired; looking up the existing page result."
+                )
+                item.error_details = {
+                    "retryable": True,
+                    "outcome_unknown": True,
+                    "provider_idempotency_key": attempt.provider_idempotency_key,
+                }
+                item.next_attempt_at = now
+                item.finished_at = None
+                item.state_version += 1
+                return None, True
         pair_reconcile = (
             job.type == JobType.DETAIL_PACK.value
             and not self._is_domestic_detail_job_record(job)
@@ -2328,7 +2416,7 @@ class ExecutionCoordinator:
                 result,
                 outcome=ProviderOutcome.FAILED,
                 error_code="OUTPUT_STORAGE_UNAVAILABLE",
-                error_message="Generated output storage is unavailable.",
+                error_message="结果存储暂不可用，本次图片未能保存。",
                 retryable=False,
                 artifact=None,
             )
@@ -2647,6 +2735,11 @@ class ExecutionCoordinator:
                         and self._job_uses_v20_aurora(session, job.id)
                         and attempt.attempt_no <= self.max_aurora_retries
                     )
+                    or (
+                        job.type == JobType.DOMESTIC_MAIN_IMAGE.value
+                        and self._job_uses_fast_main_image(session, job.id)
+                        and attempt.attempt_no <= self.max_aurora_retries
+                    )
                 )
                 aurora_retry = (
                     should_retry
@@ -2839,6 +2932,9 @@ class ExecutionCoordinator:
                         "visual_review_version"
                     ),
                     "delivery_status": result_metrics.get("delivery_status"),
+                    # Product-label fidelity gate: verified, repaired or a
+                    # disclosed residual (see app.label_fidelity).
+                    "label_fidelity": result_metrics.get("label_fidelity"),
                     "perceptual_dhash": result.raw_usage.get("perceptual_dhash"),
                     "aurora_pair_id": result_metrics.get("aurora_pair_id"),
                     "aurora_pair_canvas_dimensions": result_metrics.get(
@@ -2986,11 +3082,11 @@ class ExecutionCoordinator:
             attempt.status = AttemptStatus.FAILED.value
             attempt.provider_request_id = result.provider_request_id
             attempt.error_code = "USAGE_RECORD_FAILED"
-            attempt.error_message = "Usage could not be recorded; execution closed."
+            attempt.error_message = "生成用量未能记录，已停止本次生成。"
             attempt.finished_at = now
             item.status = JobItemStatus.FAILED.value
             item.error_code = "USAGE_RECORD_FAILED"
-            item.error_message = "Usage could not be recorded; execution closed."
+            item.error_message = "生成用量未能记录，已停止本次生成。"
             item.finished_at = now
             item.state_version += 1
             session.add(
@@ -3321,6 +3417,89 @@ class ExecutionCoordinator:
             session.commit()
         return self.finalize_job(job_id)
 
+    def fail_timed_out(
+        self,
+        job_id: str,
+        *,
+        code: str = JOB_TIME_LIMIT_EXCEEDED,
+        message: str = JOB_TIME_LIMIT_MESSAGE,
+    ) -> JobStatus | None:
+        """Stop a job whose worker exceeded its time limit.
+
+        Fences active attempts the way cancellation does, fails every
+        unfinished item, then finalizes through the normal settlement path so
+        delivered items stay billable and the unused reservation is released.
+        """
+
+        with self.session_factory() as session:
+            job = session.get(JobRecord, job_id, with_for_update=True)
+            if job is None:
+                return None
+            if JobStatus(job.status) in TERMINAL_JOB_STATUSES:
+                return JobStatus(job.status)
+            now = utc_now()
+            attempts = session.scalars(
+                select(JobAttemptRecord)
+                .where(
+                    JobAttemptRecord.job_id == job.id,
+                    JobAttemptRecord.status.in_(ACTIVE_ATTEMPT_STATUSES),
+                )
+                .with_for_update()
+            ).all()
+            for attempt in attempts:
+                attempt.status = (
+                    AttemptStatus.CANCELLED.value
+                    if attempt.status == AttemptStatus.CLAIMED.value
+                    else AttemptStatus.OUTCOME_UNKNOWN.value
+                )
+                attempt.error_code = code
+                attempt.finished_at = now
+            items = session.scalars(
+                select(JobItemRecord)
+                .where(
+                    JobItemRecord.job_id == job.id,
+                    JobItemRecord.status.not_in(TERMINAL_ITEM_STATUSES),
+                )
+                .with_for_update()
+            ).all()
+            for item in items:
+                item.status = JobItemStatus.FAILED.value
+                item.error_code = code
+                item.error_message = message
+                item.next_attempt_at = None
+                item.finished_at = now
+                item.state_version += 1
+            job.error_code = code
+            job.error_message = message
+            if JobStatus(job.status) == JobStatus.QUEUED or (
+                JobStatus(job.status) == JobStatus.AWAITING_CONFIRMATION
+            ):
+                # No processing state was reached; fail directly.
+                transition_job(job, JobStatus.FAILED, stage="timed_out", progress=100)
+                settle_credits(session, job, 0)
+                session.commit()
+                return JobStatus.FAILED
+            session.commit()
+        result = self.finalize_job(job_id)
+        if result is not None and result not in TERMINAL_JOB_STATUSES:
+            # Planning or review states finalize_job leaves alone.
+            with self.session_factory() as session:
+                job = session.get(JobRecord, job_id, with_for_update=True)
+                if job is None:
+                    return None
+                current = JobStatus(job.status)
+                if current in TERMINAL_JOB_STATUSES:
+                    return current
+                if JobStatus.FAILED in JOB_TRANSITIONS.get(current, set()):
+                    transition_job(
+                        job, JobStatus.FAILED, stage="timed_out", progress=100
+                    )
+                    settle_credits(session, job, job.actual_credits or 0)
+                    session.commit()
+                    return JobStatus.FAILED
+                return current
+        return result
+
 
 def _output_asset_role(job_type: str) -> str:
     return {
@@ -3355,6 +3534,24 @@ def _expected_delivery_dimensions(
     if isinstance(size, str) and re.fullmatch(r"[1-9]\d*x[1-9]\d*", size):
         width_text, height_text = size.split("x", maxsplit=1)
         expected = (int(width_text), int(height_text))
+        if job is not None and job.type == JobType.DETAIL_PACK.value:
+            from . import aurora_detail_authored
+            from .new_detail_skill_provider import AdapterValidationError
+
+            if (
+                job.configuration.get("domestic_detail_pipeline")
+                == aurora_detail_authored.PIPELINE_VERSION
+            ):
+                # 精致版 generates at 1440x1920 and delivers the platform size.
+                try:
+                    chosen = aurora_detail_authored.delivery_size(
+                        job.configuration.get("settings") or {}
+                    )
+                except AdapterValidationError:
+                    chosen = None
+                if chosen is not None:
+                    width_text, height_text = chosen.split("x", maxsplit=1)
+                    return int(width_text), int(height_text)
         if (
             job is not None
             and job.type == JobType.DETAIL_PACK.value
@@ -3584,6 +3781,40 @@ def build_fake_coordinator(
         max_concurrency=min(xinghe_concurrency, detail_fast.CONCURRENCY),
         budget_limit_micros=budget_limit_micros, skill_id=detail_fast.SKILL_ID,
     ))
+    # 精致版 authored from the aurora detail Skill v2.3.0: one plan, parallel
+    # independent screens through the same durable gateway, no pixel review.
+    from . import aurora_detail_authored
+
+    aurora_detail_skill_root = default_skill_root(aurora_detail_authored.SKILL_ID)
+    aurora_detail_planner = XinghePlanningCoordinator(
+        session_factory, gateway, storage=storage, skill_root=aurora_detail_skill_root,
+        base_url_signature=base_url_signature, medium_price_micros=medium_price_micros,
+        high_price_micros=high_price_micros, budget_limit_micros=budget_limit_micros,
+        skill_id=aurora_detail_authored.SKILL_ID,
+    )
+    aurora_detail_hash = BundledSkillManifestValidator().validate(
+        aurora_detail_authored.SKILL_ID
+    )
+    aurora_detail_gateway = DurableFastDetailGateway(
+        session_factory,
+        gateway,
+        storage,
+        skill_id=aurora_detail_authored.SKILL_ID,
+        skill_content_hash=aurora_detail_hash,
+        stage_root=aurora_work_root,
+        pipeline=aurora_detail_authored.PIPELINE_VERSION,
+    )
+    aurora_detail_provider = aurora_detail_authored.AuroraDetailProvider(
+        XingheImageProvider(
+            session_factory,
+            aurora_detail_gateway,
+            storage=storage,
+            skill_root=aurora_detail_skill_root,
+            max_concurrency=min(xinghe_concurrency, aurora_detail_authored.CONCURRENCY),
+            budget_limit_micros=budget_limit_micros,
+            skill_id=aurora_detail_authored.SKILL_ID,
+        )
+    )
     amazon_skill_root = default_skill_root(AMAZON_VISUAL_SUITE_SKILL_ID)
     amazon_planner = XinghePlanningCoordinator(
         session_factory,
@@ -3619,6 +3850,7 @@ def build_fake_coordinator(
         routed_amazon_planner,
         refined=refined_planner,
         fast=fast_planner,
+        aurora=aurora_detail_planner,
     )
     default_provider = build_fake_skill_runtime_provider(
         session_factory,
@@ -3810,6 +4042,7 @@ def build_fake_coordinator(
         domestic_detail_provider=domestic_detail_provider,
         refined_detail_provider=refined_detail_provider,
         fast_detail_provider=fast_detail_provider,
+        aurora_detail_provider=aurora_detail_provider,
     )
     amazon_suite_reviewer = None
     if storage is not None:

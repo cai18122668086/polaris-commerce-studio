@@ -6,11 +6,18 @@ import { useCancelJob, useLocalEditDecision, useLocalEditHistory, useRetryJob } 
 import type { JobDetail, ReplicaOutputBinding } from "@/lib/api/types";
 import { errorMessage } from "@/lib/api/request";
 import { allowsJobAction } from "@/lib/jobs/actions";
+import { isChineseUserCopy, jobFailureMessage, localEditReviewReasons } from "@/lib/jobs/presentation";
 import { BeforeAfterResult } from "./before-after-result";
 import styles from "./local-edit-review.module.css";
+import { useNextEditIsFree } from "./free-edit-cost";
 
 type Variant = "locked" | "original";
 type Candidate = { owner: JobDetail; variant: Variant; asset: JobDetail["assets"][number] };
+
+/** This edit spent one of its image's free edits: it settles no credits. */
+export function isFreeEdit(job: Pick<JobDetail, "configuration">): boolean {
+  return typeof job.configuration._local_edit_free_of_asset_id === "string";
+}
 
 function candidates(job: JobDetail): Candidate[] {
   const delivered = job.assets.find(asset => asset.is_deliverable && asset.direction === "output");
@@ -21,6 +28,7 @@ function candidates(job: JobDetail): Candidate[] {
   const originalAvailable = original && (
     lockedCandidate?.validation.strict_lock_success === true || delivered?.asset_id === original.asset_id
     || (job.cost.actual_credits ?? 0) > 0 || job.configuration._local_edit_generation_already_paid === true
+    || isFreeEdit(job)
   );
   return [
     ...(locked ? [{ owner: job, variant: "locked" as const, asset: locked }] : []),
@@ -75,9 +83,14 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
   const latest = candidates(job).find(choice => choice.variant === "locked")?.asset;
   const pending = job.status === "awaiting_final_review";
   const busy = decision.isPending || regenerate.isPending || cancel.isPending;
-  const summary = originalSelected
-    ? "审图意见针对局部合成版。"
-    : image?.validation.visual_review_summary;
+  // The reviewer's free-text summary is English model output; show structured reasons in Chinese instead.
+  const lockedChoice = candidates(job).find(choice => choice.variant === "locked")?.asset;
+  const reviewReasons = localEditReviewReasons((originalSelected ? lockedChoice : image)?.validation.visual_review_reason_codes);
+  const rawSummary = image?.validation.visual_review_summary;
+  const summary = reviewReasons.length
+    ? `${originalSelected ? "局部合成版" : "这版"}：${reviewReasons.join("、")}。`
+    : originalSelected ? "审图意见针对局部合成版。" : isChineseUserCopy(typeof rawSummary === "string" ? rawSummary : null) ? rawSummary : undefined;
+  const systemRejected = pending && lockedChoice?.validation.review_state === "reject";
   const alreadyAdopted = image?.asset_id === activeOutput?.asset_id && Boolean(activeOutput);
 
   const act = async (action: "accept" | "review" | "regenerate" | "retry" | "cancel") => {
@@ -122,7 +135,10 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
   const charged = job.cost.actual_credits;
   const reusedPaidGeneration = job.configuration._local_edit_generation_already_paid === true;
   const selectedPaid = selected?.owner.cost.actual_credits;
-  const canDownload = Boolean(alreadyAdopted || (typeof selectedPaid === "number" && selectedPaid > 0) || selected?.owner.configuration._local_edit_generation_already_paid === true);
+  const free = isFreeEdit(job);
+  const editSource = (job.configuration.input as Record<string, unknown> | undefined)?.source_asset_id;
+  const nextFree = useNextEditIsFree(workspaceId, typeof editSource === "string" ? editSource : undefined);
+  const canDownload = Boolean(alreadyAdopted || (typeof selectedPaid === "number" && selectedPaid > 0) || selected?.owner.configuration._local_edit_generation_already_paid === true || (selected && isFreeEdit(selected.owner)));
   const instruction = ((selected?.owner ?? job).configuration.settings as Record<string, unknown> | undefined)?.instruction;
   const canAdopt = (pending || completed) && job.allowed_actions.includes("accept_local_edit") && image && !alreadyAdopted;
 
@@ -154,8 +170,9 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
     <aside className={styles.decision}>
       <span className={`${styles.status} ${pending ? styles.waiting : ""}`}><i />{pending ? "待确认" : completed ? alreadyAdopted ? "已采用" : "可切换" : abandoned ? "已放弃" : failed ? "需调整" : "处理中"}</span>
       <div className={styles.heading}><h3>{editing ? "调整后再生成" : pending ? "确认修改效果" : completed ? !image ? "任务已保存" : alreadyAdopted ? "修改已保存" : "切换使用结果" : abandoned ? "本次修改已放弃" : failed ? "这次修改未完成" : "正在生成修改版"}</h3>
-        {!editing && <p>{originalSelected ? "完整生成版会保留选区外变化。" : pending ? "局部合成版保留选区外原貌。" : completed ? image ? "可以下载，或继续修改。" : "当前任务没有图片结果。" : abandoned ? (typeof charged === "number" && charged > 0 ? "图片已保留，生成费用已结算。" : "预留积分已释放。") : failed ? job.error_message ?? "可重试，或调整选区和要求。" : "完成后即可比较选择。"}</p>}
+        {!editing && <p>{originalSelected ? "完整生成版会保留选区外变化。" : pending ? "局部合成版保留选区外原貌。" : completed ? image ? "可以下载，或继续修改。" : "当前任务没有图片结果。" : abandoned ? (typeof charged === "number" && charged > 0 ? "图片已保留，生成费用已结算。" : "预留积分已释放。") : failed ? jobFailureMessage(job.error_code, job.error_message, job.error_details) ?? "可重试，或调整选区和要求。" : "完成后即可比较选择。"}</p>}
       </div>
+      {systemRejected && !editing && <p className={styles.reviewNotice} role="note">系统检查发现{reviewReasons.length ? `：${reviewReasons.join("、")}` : "这次修改效果有明显问题"}。这只是提醒，你可以预览后仍然采用，也可以调整要求再生成。{reusedPaidGeneration ? "" : typeof charged === "number" && charged > 0 ? `本次生成已结算 ${charged} 积分，采用不会再次扣费。` : ""}</p>}
       {editing && <form className={styles.regeneration} onSubmit={event => { event.preventDefault(); void act("regenerate"); }}>
         <label htmlFor={`regeneration-${job.id}`}>修改要求</label>
         <textarea id={`regeneration-${job.id}`} autoFocus rows={4} maxLength={4000} value={regeneration.instruction} disabled={busy}
@@ -163,7 +180,7 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
         <div className={styles.regenerationActions}>
           <button type="button" disabled={busy} onClick={() => setRegeneration(undefined)}>取消</button>
           <button type="submit" className={styles.primary} disabled={busy || !regeneration.instruction.trim()}>
-            {regenerate.isPending ? <LoaderCircle className="spin" size={15} /> : <RotateCcw size={15} />}生成新版本{typeof credits === "number" && <small> · {credits} 积分</small>}
+            {regenerate.isPending ? <LoaderCircle className="spin" size={15} /> : <RotateCcw size={15} />}生成新版本{nextFree ? <small> · 免费</small> : typeof credits === "number" && credits > 0 && <small> · {credits} 积分</small>}
           </button>
         </div>
       </form>}
@@ -173,14 +190,14 @@ export function LocalEditReview({ workspaceId, job, sourceUrl, onJobChange, onCo
           {job.allowed_actions.includes("review_local_edit") && selectedLatest && !originalSelected && <button type="button" disabled={busy || !latest} onClick={() => void act("review")}><ScanLine size={15} />复核这版</button>}
           {allowsJobAction(job.allowed_actions, "retry") && <button type="button" disabled={busy} onClick={() => setRegeneration({ jobId: job.id, instruction: typeof instruction === "string" ? instruction : "" })}><RotateCcw size={15} />调整要求再生成</button>}
         </div>}
-        <div className={styles.price}><span>{reusedPaidGeneration ? "已付费版本" : "已结算"}</span><strong>{reusedPaidGeneration ? "未重复收费" : typeof charged === "number" ? `${charged} 积分` : "按生成计费"}</strong></div>
+        <div className={styles.price}><span>{free ? "免费修改" : reusedPaidGeneration ? "已付费版本" : "已结算"}</span><strong>{free ? "未扣积分" : reusedPaidGeneration ? "未重复收费" : typeof charged === "number" ? `${charged} 积分` : "按生成计费"}</strong></div>
         {pending && job.allowed_actions.includes("cancel") && <button className={styles.abandon} type="button" disabled={busy} onClick={() => void act("cancel")}>放弃本次修改</button>}
       </div>}
       {completed && alreadyAdopted && onContinueEditing && <button className={styles.primary} type="button" onClick={onContinueEditing}>继续修改这张图</button>}
       {(abandoned || failed) && allowsJobAction(job.allowed_actions, "retry") && <button className={styles.primary} type="button" disabled={busy} onClick={() => void act("retry")}><RotateCcw size={15} />重试本次修改</button>}
       {(abandoned || failed) && onRevise && <button className={styles.abandon} type="button" onClick={onRevise}>重新圈选</button>}
       {busy && <p className={styles.loadingText} role="status"><LoaderCircle className="spin" size={14} />正在处理…</p>}
-      {pending && !editing && <details className={styles.disclosure}><summary>审图意见<ChevronDown size={14} /></summary><p>{typeof summary === "string" ? summary : "请以预览效果为准。"}</p>
+      {pending && !editing && <details className={styles.disclosure}><summary>系统检查意见<ChevronDown size={14} /></summary><p>{typeof summary === "string" ? summary : "请以预览效果为准。"}</p>
       </details>}
       {!editing && typeof instruction === "string" && <details className={styles.disclosure}><summary>修改要求<ChevronDown size={14} /></summary><p>{instruction}</p></details>}
       {actionError && <p className={styles.error} role="alert">{actionError}</p>}

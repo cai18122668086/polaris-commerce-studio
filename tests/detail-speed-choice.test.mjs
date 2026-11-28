@@ -4,9 +4,18 @@ import { DETAIL_SPEED_OPTIONS, detailSpeedSettings, savedDetailSpeed } from "../
 import { detailSkillSettings, savedDetailSkill } from "../lib/detail-skills.ts";
 import { intentSignature } from "../lib/api/idempotency.ts";
 
-test("domestic detail offers fast first with estimated durations", () => {
+test("version titles carry the measured durations", () => {
   assert.deepEqual(DETAIL_SPEED_OPTIONS.map(option => option.value), ["fast", "standard"]);
-  assert.deepEqual(DETAIL_SPEED_OPTIONS.map(option => option.title), ["快速版（约5分钟 · 8积分/张）", "精致版（约40分钟 · 15积分/张）"]);
+  assert.deepEqual(DETAIL_SPEED_OPTIONS.map(option => option.title), ["快速版（约5分钟 · 8积分/张）", "精致版（约5分钟 · 15积分/张）"]);
+});
+
+test("new domestic detail jobs only offer 精致版", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const detail = await readFile(new URL("../components/detail-pack-workspace.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(detail, /GenerationVersionField/);
+  assert.doesNotMatch(detail, /detailSpeedSettings/);
+  assert.match(detail, /jobId \? savedDetailSpeed\(job\.data\?\.configuration\) : "standard"/);
+  assert.match(detail, /精致版 · 约 5 分钟 · 15 积分\/张/);
 });
 
 test("default keeps the original request identity while fast selects a new intent", () => {

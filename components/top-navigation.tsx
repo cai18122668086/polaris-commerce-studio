@@ -162,7 +162,7 @@ export function TopNavigation({
               active={pathname === item.href || pathname.startsWith(`${item.href}/`)} />
           ))}
           {renderMegaMenu(ALL_TOOLS_MENU)}
-          {videoStudioAllowed && <a href="/video-studio" target="_blank" rel="noopener noreferrer" className={styles.videoEntry}>视频创作<span>NEW</span></a>}
+          {videoStudioAllowed && <a href="/video-studio" target="_blank" rel="noopener noreferrer" className={styles.videoEntry}>视频创作</a>}
         </nav>
         <button
           ref={mobileTriggerRef}

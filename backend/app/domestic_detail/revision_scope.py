@@ -224,9 +224,9 @@ async def run_scope_check(
                 api_latency_seconds=0,
                 actual_cost_micros=None,
                 error_code=code,
-                error_message="Original scope transport needs reconciliation ("
+                error_message="原修改范围的调用结果需要核对（"
                 + type(exc).__name__
-                + ")",
+                + "），已停止重复提交。",
                 provider_envelope={
                     "native_planner_dispatch": dispatch_metadata(
                         route,

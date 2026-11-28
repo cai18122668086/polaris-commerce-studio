@@ -968,7 +968,7 @@ class AmazonVisualSuiteProvider:
                 result,
                 outcome=ProviderOutcome.FAILED,
                 error_code="AMAZON_OUTPUT_FORMAT_INVALID",
-                error_message=f"{spec.item_key} requires an Amazon-ready JPEG export.",
+                error_message=f"{spec.item_key} 需要导出为符合亚马逊要求的 JPEG 图片。",
                 retryable=False,
                 artifact=None,
                 persisted_artifact=None,

@@ -12,3 +12,45 @@
 .version strong{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:13px;font-weight:500}.version .status{font-size:10px;font-style:normal;color:#8a8d96}.version small{display:block;margin-top:5px;font-size:11px;line-height:1.5;color:#8a8d96}.instruction{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.version time{display:block;margin-top:4px;font-size:10px;color:#a0a3ab}
 .actions{display:flex;flex-direction:column;gap:8px}.primary,.detail{display:flex;justify-content:center;align-items:center;gap:7px;min-height:44px;width:100%;padding:10px 14px;border:0;border-radius:9px;font:inherit;font-size:13px;cursor:pointer}.primary{background:#242424;color:#fff}.primary:hover:not(:disabled){background:#d8ff00;color:#242424}.detail{background:transparent;color:#7c818d;font-size:12px}.dialog button:disabled{opacity:.5;cursor:default}.error{margin:0;color:#a3422f;font-size:12px;line-height:1.7}.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;min-height:280px;padding:24px;color:#8a8d96;font-size:13px}
 @media(max-width:760px){.dialog{width:calc(100vw - 20px);max-height:calc(100dvh - 20px);border-radius:13px}.header{padding:16px}.body{grid-template-columns:minmax(0,1fr);padding:16px;gap:18px}.preview{min-height:180px}.preview>img{max-height:420px}.versions{max-height:250px}.header>button{min-width:44px;min-height:44px}.version{min-height:72px}}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .dialog{border:1px solid #242321;background:rgb(255 250 244 / 0.04);color:#e9e8e7;box-shadow:0 24px 100px rgb(0 0 0 / 0.395);border-radius:22px}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.51)}
+:global(.theme-ember) .header{border-bottom:1px solid #1e1d1c}
+:global(.theme-ember) .header h2{font-weight:500}
+:global(.theme-ember) .header p{color:#79736b}
+:global(.theme-ember) .header>button{background:rgb(255 250 244 / 0.025);color:#908a82;border-radius:999px}
+:global(.theme-ember) .preview{border:1px solid #232120;background:rgb(255 250 244 / 0.025);color:#78726a;border-radius:16px}
+:global(.theme-ember) .version{border:1px solid #22211f;background:rgb(255 250 244 / 0.04);border-radius:14px}
+:global(.theme-ember) .version[aria-pressed=true]{border-color:#d0ceca;box-shadow:0 0 0 1px #000000}
+:global(.theme-ember) .version>img,:global(.theme-ember) .placeholder{background:rgb(255 250 244 / 0.025);border-radius:8px}
+:global(.theme-ember) .version .status{color:#79736b}
+:global(.theme-ember) .version small{color:#79736b}
+:global(.theme-ember) .version time{color:#625d57}
+:global(.theme-ember) .primary{background:#e9e8e7;color:#0f0e0d}
+:global(.theme-ember) .primary:hover:not(:disabled){background:rgb(255 250 244 / 0.06);color:#e9e8e7}
+:global(.theme-ember) .detail{color:#868077}
+:global(.theme-ember) .error{color:#fa682a}
+:global(.theme-ember) .loading{color:#79736b}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .dialog{border:1px solid #e2e1df;background:#ffffff;color:#242321;box-shadow:0 24px 100px rgb(30 27 22 / 0.22);border-radius:22px}
+:global(.theme-plaster) .dialog::backdrop{background:rgb(27 26 25 / 0.408)}
+:global(.theme-plaster) .header{border-bottom:1px solid #e8e7e5}
+:global(.theme-plaster) .header h2{font-weight:500}
+:global(.theme-plaster) .header p{color:#8c887f}
+:global(.theme-plaster) .header>button{background:#eeeeed;color:#76736b;border-radius:999px}
+:global(.theme-plaster) .preview{border:1px solid #e3e2e0;background:#f2f1f0;color:#8c8980;border-radius:16px}
+:global(.theme-plaster) .version{border:1px solid #e4e3e1;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .version[aria-pressed=true]{border-color:#45443f;box-shadow:0 0 0 1px #1e1b16}
+:global(.theme-plaster) .version>img,:global(.theme-plaster) .placeholder{background:#ededec;border-radius:8px}
+:global(.theme-plaster) .version .status{color:#8c887f}
+:global(.theme-plaster) .version small{color:#8c887f}
+:global(.theme-plaster) .version time{color:#a09e96}
+:global(.theme-plaster) .primary{background:#242321;color:#ffffff}
+:global(.theme-plaster) .primary:hover:not(:disabled){background:#eae9e7;color:#242321}
+:global(.theme-plaster) .detail{color:#807d74}
+:global(.theme-plaster) .error{color:#b23a0e}
+:global(.theme-plaster) .loading{color:#8c887f}
+/* plaster:end */

@@ -138,7 +138,7 @@ def test_music_preference_is_frozen_and_replay_cannot_change_it(
         assert saved.snapshot["music"] == "off"
 
 
-@pytest.mark.parametrize("choice", ["template", "off", "lower"])
+@pytest.mark.parametrize("choice", ["template", "off", "lower", "raise"])
 @pytest.mark.parametrize("has_music", [True, False])
 def test_automatic_and_manual_preview_apply_saved_music_or_noop(
     monkeypatch, choice, has_music
@@ -163,7 +163,21 @@ def test_automatic_and_manual_preview_apply_saved_music_or_noop(
     )
     preview.persist_planning_preview(row, None, None, None)
     edits = captured[0].options.native_edits
-    if has_music and choice in {"off", "lower"}:
+    if has_music and choice in {"off", "lower", "raise"}:
         assert edits.music == choice
     else:
         assert edits is None
+
+
+def test_music_tiers_never_lift_the_bed_above_unity():
+    from app.video_editing_render_edits import music_gain_offset
+
+    tiers = (None, "template", "lower", "raise", "off")
+    assert [music_gain_offset(c) for c in tiers] == [
+        0,
+        0,
+        -6,
+        3,
+        0,
+    ]
+

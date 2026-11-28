@@ -28,6 +28,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
@@ -38,6 +39,7 @@ from .video_cosyvoice import (
     LANGUAGES,
     MODEL,
     PREVIEW_TEXT,
+    SERVICE_UNAVAILABLE,
     CosyVoice,
     account_scope,
     ready,
@@ -58,12 +60,16 @@ class CloneResponse(BaseModel):
     preview_status: str
     preview_url: str | None
     error_code: str | None
+    error_message: str | None = None
     created_at: str
     sample_seconds: float | None
 
 
 class CloneConfigResponse(BaseModel):
+    # 能否新建克隆（服务就绪且新建开关打开）
     available: bool
+    # 已有克隆声音能否试听 / 用于口播（不受新建开关影响）
+    synthesis_available: bool = False
     max_bytes: int
     min_seconds: int
     max_seconds: int
@@ -105,6 +111,25 @@ def rows_for(
     ).all()
 
 
+FAILURE_MESSAGES = {
+    "VIDEO_CLONE_REJECTED": "声音服务未通过本段录音，请换一段清晰的本人独白重试。",
+    "VIDEO_CLONE_OUTCOME_UNKNOWN": "克隆结果尚未确认，请稍后刷新查看。",
+    "VIDEO_PROVIDER_OUTCOME_UNKNOWN": "声音服务结果尚未确认，请稍后刷新查看。",
+}
+
+
+def failure_message(row: VideoClonedVoiceRecord) -> str | None:
+    if not row.error_code:
+        return None
+    failure = (row.details or {}).get("failure") or {}
+    message = failure.get("message") if isinstance(failure, dict) else None
+    return (
+        message
+        if isinstance(message, str) and message
+        else FAILURE_MESSAGES.get(row.error_code, "声音克隆失败，请联系客服。")
+    )
+
+
 def response(row: VideoClonedVoiceRecord) -> CloneResponse:
     return CloneResponse(
         id=row.id,
@@ -112,6 +137,7 @@ def response(row: VideoClonedVoiceRecord) -> CloneResponse:
         status=row.status,
         preview_status=row.preview_status,
         error_code=row.error_code,
+        error_message=failure_message(row),
         created_at=row.created_at.isoformat(),
         sample_seconds=row.details.get("sample_seconds"),
         preview_url=f"/api/v1/video-studio/workspaces/{row.workspace_id}/voice-clones/{row.id}/preview"
@@ -229,10 +255,20 @@ def enroll(
         except ApiError as error:
             row.status = (
                 "failed"
-                if error.code == "VIDEO_PROVIDER_REJECTED" and not row.provider_voice_id
+                if error.code in {"VIDEO_PROVIDER_REJECTED", SERVICE_UNAVAILABLE}
+                and not row.provider_voice_id
                 else "unknown"
             )
             row.error_code = error.code
+            # A definite failure releases the credit hold (status "failed").
+            # Keep the provider's reason so 我的声音 can show it.
+            row.details = {
+                **row.details,
+                "failure": {
+                    "message": error.message,
+                    **(error.details if isinstance(error.details, dict) else {}),
+                },
+            }
         except Exception:
             row.status, row.error_code = "unknown", "VIDEO_CLONE_OUTCOME_UNKNOWN"
         session.commit()
@@ -278,10 +314,15 @@ def make_preview(
         session.commit()
 
 
+def clone_creation_enabled(settings: Settings) -> bool:
+    return bool(ready(settings) and settings.video_voice_clone_enabled)
+
+
 @router.get("/voice-clone-config", response_model=CloneConfigResponse)
 def clone_config(request: Request, workspace: VideoWorkspace) -> CloneConfigResponse:
     return CloneConfigResponse(
-        available=ready(request.app.state.settings),
+        available=clone_creation_enabled(request.app.state.settings),
+        synthesis_available=ready(request.app.state.settings),
         max_bytes=10 * 1024 * 1024,
         min_seconds=5,
         max_seconds=60,
@@ -317,6 +358,13 @@ def create_clone(
 ) -> CloneResponse:
     require_workspace_write(workspace)
     settings = request.app.state.settings
+    if not settings.video_voice_clone_enabled:
+        # 关闭时在读取录音、冻结积分、调用供应商之前就拒绝。
+        raise ApiError(
+            403,
+            "VIDEO_CLONE_DISABLED",
+            "声音克隆暂未开通，现在可以先使用系统声音。",
+        )
     if not ready(settings):
         raise ApiError(
             503, "VIDEO_CLONE_NOT_CONFIGURED", "专属声音服务尚未配置，请联系管理员。"
@@ -427,7 +475,15 @@ def create_clone(
     )
     session.add(row)
     try:
+        video_credits.hold(
+            session, settings, workspace.workspace_id, "voice_clone", "video_voice", id
+        )
         session.commit()
+    except ApiError:
+        session.rollback()
+        source.unlink(missing_ok=True)
+        target.unlink(missing_ok=True)
+        raise
     except IntegrityError:
         session.rollback()
         source.unlink(missing_ok=True)
@@ -446,6 +502,12 @@ def create_clone(
         return response(old)
     background.add_task(
         enroll, request.app.state.session_factory, settings, row.id, adapter(request)
+    )
+    background.add_task(
+        video_credits.settle_after,
+        request.app.state.session_factory,
+        "video_voice",
+        row.id,
     )
     return response(row)
 
@@ -476,6 +538,8 @@ def refresh_clone(
         )
     if row.status in {"processing", "submitting", "unknown", "ready"}:
         reconcile(row, adapter(request))  # Query only, including after process restart.
+        session.commit()
+        video_credits.reconcile_owner(session, "video_voice", row.id)
         session.commit()
     return response(row)
 

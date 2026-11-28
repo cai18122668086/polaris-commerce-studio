@@ -6,6 +6,7 @@ import hashlib
 import re
 import subprocess
 import time
+from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Any, Literal, cast
@@ -15,11 +16,12 @@ from uuid import UUID, uuid4
 from fastapi import APIRouter, BackgroundTasks, File, Request, UploadFile
 from fastapi.responses import FileResponse
 from pydantic import Field
-from sqlalchemy import select, update
+from sqlalchemy import func, select, text, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
@@ -27,6 +29,7 @@ from .models import utc_now
 from .video_avatar_access import avatar_scope
 from .video_avatar_catalog import public_avatar_gender
 from .video_cosyvoice import CosyVoice
+from .video_credit_prices import VideoCreditPricesResponse, price_list
 from .video_generation_media import (
     MODEL_REGISTRATION_STAGES,
     prepare_lipsync_media,
@@ -54,9 +57,18 @@ from .video_studio_routes import VideoWorkspace, append_version, scope
 from .video_studio_schemas import StrictVideoModel
 from .video_template_media import prepare_forward, video_info
 from .video_tts import synthesize
-from .video_voice_catalog import VOICES, official_voices, preview_path, select_tao_voice
+from .video_voice_catalog import (
+    EMOTIONS,
+    LANGUAGES,
+    VOICES,
+    official_voices,
+    preview_path,
+    referenced_voice_ids,
+    select_tao_voice,
+)
 from .video_voice_cloning import catalog as cloned_voice_catalog
 from .video_voice_cloning import select_voice as select_cloned_voice
+from .video_voice_names import quanyu_display
 from .video_writing_provenance import matching_writing_origin
 
 router = APIRouter(
@@ -266,6 +278,13 @@ def process_generation(
             _process_generation(factory, settings, job_id, provider, lease)
         except VideoRunLost:
             return
+    # Every run path (request, resume, startup recovery) settles or releases
+    # the task's credit hold from the status it just recorded.
+    video_credits.settle_after(factory, "video_generation", str(job_id))
+    # A finished task frees a slot: start the next waiting item of its batch.
+    from .video_work_talking import continue_after  # noqa: PLC0415 (import cycle)
+
+    continue_after(factory, settings, str(job_id), provider)
 
 
 def _process_generation(
@@ -791,10 +810,8 @@ def voices(
     current = [
         {
             "id": "qy-voice-" + str(v["id"]),
-            "name": v.get("name") or v.get("voice_name"),
-            "gender": "男" if "男" in (v.get("name") or "") else "女",
+            **quanyu_display(str(v["id"]), v.get("name") or v.get("voice_name")),
             "tag": "公共音色",
-            "description": "系统声音",
             "available": True,
             "emotions": ["自然"],
             "languages": {"auto": "跟随音色原始语言"},
@@ -803,15 +820,37 @@ def voices(
         for v in providers(request).voices()
     ]
     root = f"/api/v1/video-studio/workspaces/{workspace.workspace_id}"
+    used = referenced_voice_ids(
+        session, workspace.workspace_id, workspace.principal.user_id
+    )
     result = (
         current
-        + official_voices(request.app.state.settings, root)
+        + official_voices(request.app.state.settings, root, used)
         + cloned_voice_catalog(request.app.state.settings, session, workspace)
     )
-    return [
-        {key: value for key, value in voice.items() if key != "provider"}
-        for voice in result
-    ]
+    return [compact_voice(voice) for voice in result]
+
+
+# 系统声音列表里不再逐条带的字段：情绪/语言选项三百多次重复，曾让列表涨到 44 万字节，
+# 慢网下超过前端超时（正式站首页显示 0 个音色）。这些选项改由 /voice-options 一次给出。
+_SHARED_VOICE_FIELDS = {"provider", "emotions", "languages", "tag", "preview_url"}
+
+
+def compact_voice(voice: dict[str, Any]) -> dict[str, Any]:
+    """系统声音（tao）去掉共享字段，试听只给 ``preview``（前端按 id 拼地址）。"""
+
+    if voice.get("provider") != "tao":
+        return {key: value for key, value in voice.items() if key != "provider"}
+    item = {k: v for k, v in voice.items() if k not in _SHARED_VOICE_FIELDS}
+    item["preview"] = voice.get("preview_url") is not None
+    return item
+
+
+@router.get("/voice-options")
+def voice_options(workspace: VideoWorkspace) -> dict[str, Any]:
+    """系统声音共用的情绪与语言选项（原先逐条附在 /voices 里）。"""
+
+    return {"emotions": EMOTIONS, "languages": LANGUAGES}
 
 
 @router.get("/voices/{voice_id}/preview")
@@ -968,6 +1007,55 @@ async def upload_audio(
     return {"id": id, "name": file.filename, "duration": metadata.info.length}
 
 
+ACTIVE_VIDEO_STATUSES = ("queued", "running")
+
+
+def lock_user_video_submissions(session: Session, user_id: str) -> None:
+    """Serialize one user's video submissions until this transaction ends.
+
+    PostgreSQL only: a transaction-scoped advisory lock keyed by the user, so
+    two concurrent submits cannot both pass the active-video cap.
+    """
+
+    if session.get_bind().dialect.name != "postgresql":
+        return
+    session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"polaris:video-active:{user_id}"},
+    )
+
+
+def reserve_video_slot(session: Session, user_id: str, limit: int) -> None:
+    """Lock, then check; the caller's insert + commit releases the lock."""
+
+    if not limit:
+        return
+    lock_user_video_submissions(session, user_id)
+    enforce_active_video_limit(session, user_id, limit)
+
+
+def enforce_active_video_limit(session: Session, user_id: str, limit: int) -> None:
+    """Cap concurrently generating videos per user (0 disables)."""
+
+    if not limit:
+        return
+    running = session.scalar(
+        select(func.count())
+        .select_from(VideoGenerationRecord)
+        .where(
+            VideoGenerationRecord.owner_user_id == user_id,
+            VideoGenerationRecord.status.in_(ACTIVE_VIDEO_STATUSES),
+        )
+    )
+    if (running or 0) >= limit:
+        raise ApiError(
+            429,
+            "USER_ACTIVE_VIDEO_LIMIT_REACHED",
+            f"你已有 {limit} 个视频正在生成，请等待完成后再提交新的视频。",
+            {"limit": limit, "running": int(running or 0)},
+        )
+
+
 @router.post("/generation-tasks")
 def submit_generation(
     body: GenerationRequest,
@@ -977,6 +1065,34 @@ def submit_generation(
     session: SessionDependency,
 ) -> dict[str, Any]:
     require_workspace_write(workspace)
+    settings = request.app.state.settings
+    row, created = create_generation(
+        session, settings, workspace, body, lambda: providers(request)
+    )
+    if created:
+        background.add_task(
+            process_generation,
+            request.app.state.session_factory,
+            settings,
+            row.id,
+            providers(request),
+        )
+    return job_response(row)
+
+
+def create_generation(
+    session: Session,
+    settings: Settings,
+    workspace: WorkspaceContext,
+    body: GenerationRequest,
+    provider: Callable[[], VideoProviders],
+) -> tuple[VideoGenerationRecord, bool]:
+    """Create one paid task, or return the task this request_id already made.
+
+    Shared by single submissions and work batches so both keep the same
+    idempotency, credit hold and active-task checks. The caller schedules
+    ``process_generation`` when the second value is True.
+    """
     fingerprint = hashlib.sha256(body.model_dump_json().encode()).hexdigest()
     accepted_fingerprints = {fingerprint}
     if "prompt" not in body.model_fields_set:
@@ -995,9 +1111,14 @@ def submit_generation(
     if old:
         if old.request_hash not in accepted_fingerprints:
             raise ApiError(409, "VIDEO_REQUEST_REUSED", "请求标识已用于其他内容。")
-        return job_response(old)
-    if not request.app.state.settings.video_providers_enabled:
+        return old, False
+    if not settings.video_providers_enabled:
         raise ApiError(503, "VIDEO_PROVIDER_DISABLED", "视频服务尚未配置。")
+    enforce_active_video_limit(
+        session,
+        workspace.principal.user_id,
+        settings.user_active_video_job_limit,
+    )
     avatar = session.scalar(
         select(VideoAvatarRecord).where(
             VideoAvatarRecord.id == body.avatar_id, avatar_scope(workspace)
@@ -1106,15 +1227,15 @@ def submit_generation(
             if not draft["text"].strip():
                 raise ApiError(422, "VIDEO_SCRIPT_EMPTY", "请输入文案。")
             if draft["voiceId"] in VOICES:
-                details["tts"] = select_tao_voice(request.app.state.settings, draft)
+                details["tts"] = select_tao_voice(settings, draft)
             elif draft["voiceId"].startswith("cv-voice-"):
                 details["tts"] = select_cloned_voice(
-                    request.app.state.settings, session, workspace, draft
+                    settings, session, workspace, draft
                 )
             else:
                 voice_id = draft["voiceId"].removeprefix("qy-voice-")
                 session.commit()
-                if voice_id not in {str(v["id"]) for v in providers(request).voices()}:
+                if voice_id not in {str(v["id"]) for v in provider().voices()}:
                     raise ApiError(422, "VIDEO_VOICE_INVALID", "请选择正式公共音色。")
                 if (
                     draft.get("emotion", "自然") != "自然"
@@ -1140,6 +1261,13 @@ def submit_generation(
             "confirmed",
             writing_origin=writing_origin,
         )
+    # Re-check under a per-user lock held until the insert commits; the early
+    # check above only avoids wasted work.
+    reserve_video_slot(
+        session,
+        workspace.principal.user_id,
+        settings.user_active_video_job_limit,
+    )
     row = VideoGenerationRecord(
         id=str(uuid4()),
         workspace_id=workspace.workspace_id,
@@ -1155,6 +1283,14 @@ def submit_generation(
     )
     session.add(row)
     try:
+        video_credits.hold(
+            session,
+            settings,
+            workspace.workspace_id,
+            "lipsync" if body.kind == "lipsync" else "avatar_motion",
+            "video_generation",
+            row.id,
+        )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -1167,15 +1303,8 @@ def submit_generation(
         )
         if not old or old.request_hash not in accepted_fingerprints:
             raise ApiError(409, "VIDEO_REQUEST_REUSED", "请求冲突。") from None
-        return job_response(old)
-    background.add_task(
-        process_generation,
-        request.app.state.session_factory,
-        request.app.state.settings,
-        row.id,
-        providers(request),
-    )
-    return job_response(row)
+        return old, False
+    return row, True
 
 
 @router.get("/audio-files/{audio_id}")
@@ -1258,9 +1387,19 @@ def approve_template(
         )
         .values(details={**row.details, "review_approved": True}, status="queued")
     )
+    approved = cast(CursorResult[Any], changed).rowcount == 1
+    if approved:
+        video_credits.hold(
+            session,
+            request.app.state.settings,
+            row.workspace_id,
+            "avatar_register",
+            "video_generation",
+            row.id,
+        )
     session.commit()
     session.refresh(row)
-    if cast(CursorResult[Any], changed).rowcount != 1:
+    if not approved:
         return job_response(row)
     background.add_task(
         process_generation,
@@ -1289,6 +1428,8 @@ def reject_template(
         .values(status="rejected", stage="review_rejected")
     )
     session.commit()
+    video_credits.reconcile_owner(session, "video_generation", row.id)
+    session.commit()
     session.refresh(row)
     return job_response(row)
 
@@ -1315,9 +1456,25 @@ def resume_job(
         )
         .values(status="queued")
     )
+    resumed = cast(CursorResult[Any], changed).rowcount == 1
+    if resumed:
+        # A failed run released its hold; resuming it holds again. Pending
+        # (unknown/awaiting_resume) runs keep their original hold.
+        video_credits.hold(
+            session,
+            request.app.state.settings,
+            row.workspace_id,
+            "lipsync"
+            if row.kind == "lipsync"
+            else "avatar_register"
+            if row.details.get("review_approved")
+            else "avatar_motion",
+            "video_generation",
+            row.id,
+        )
     session.commit()
     session.refresh(row)
-    if cast(CursorResult[Any], changed).rowcount != 1:
+    if not resumed:
         return job_response(row)
     background.add_task(
         process_generation,
@@ -1341,6 +1498,35 @@ def editing_handoff(
     return export_bundle(
         own_job(session, workspace, job_id), request.app.state.settings
     )
+
+
+@router.get("/credit-prices", response_model=VideoCreditPricesResponse)
+def credit_prices(
+    request: Request, workspace: VideoWorkspace
+) -> VideoCreditPricesResponse:
+    """Configured credit price for each paid video action; unpriced ones are null."""
+    return price_list(request.app.state.settings.video_credit_prices)
+
+
+@router.get("/generation-requests/{request_id}")
+def generation_request(
+    request_id: UUID, workspace: VideoWorkspace, session: SessionDependency
+) -> dict[str, Any]:
+    """Look up a submission by its idempotency key without creating anything.
+
+    The page calls this when a confirmed submission's response was lost. It
+    replaces asking the user to "query the original submission": a found job is
+    shown as-is, and an absent one means the request never reached the server,
+    so nothing was charged. It never re-sends a paid request.
+    """
+    row = session.scalar(
+        select(VideoGenerationRecord).where(
+            VideoGenerationRecord.workspace_id == workspace.workspace_id,
+            VideoGenerationRecord.owner_user_id == workspace.principal.user_id,
+            VideoGenerationRecord.request_id == str(request_id),
+        )
+    )
+    return {"received": row is not None, "job": job_response(row) if row else None}
 
 
 @router.get("/generation-tasks/{job_id}/{kind}")

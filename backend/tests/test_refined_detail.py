@@ -18,6 +18,13 @@ from tests.test_api import WORKSPACE_ID, dispatch_pending, idem, upload_asset
 from tests.test_domestic_detail_execution import _gateway
 
 
+@pytest.fixture(autouse=True)
+def _xinghe_refined_pipeline(monkeypatch):
+    # These cover the historical xinghe 4.0 精致版; new 精致版 jobs use the
+    # aurora authored contract unless POLARIS_DETAIL_AURORA_AUTHORED is off.
+    monkeypatch.setenv("POLARIS_DETAIL_AURORA_AUTHORED", "false")
+
+
 def create(client, *, skill="refined", count=8, intent="submit", auto_start=False):
     source = upload_asset(client)
     response = client.post(

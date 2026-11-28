@@ -66,6 +66,23 @@ def new_id(prefix: str) -> str:
 _quota_enabled: bool = True
 _credit_enforcement_enabled: bool = True
 _credit_pilot_workspace_ids: frozenset[str] = frozenset()
+_user_active_image_job_limit: int = 0
+# Statuses that occupy a worker or upstream capacity. Drafts and jobs waiting
+# for the customer (plan confirmation, final review) do not count.
+RUNNING_JOB_STATUSES = (
+    JobStatus.QUEUED.value,
+    JobStatus.PLANNING.value,
+    JobStatus.PROCESSING.value,
+    JobStatus.CANCELLING.value,
+)
+USER_ACTIVE_JOB_LIMIT_MESSAGE = (
+    "你已有 {limit} 个生成任务正在进行，请等待其中一个完成后再提交。"
+)
+
+
+def set_user_active_image_job_limit(limit: int) -> None:
+    global _user_active_image_job_limit
+    _user_active_image_job_limit = max(0, int(limit))
 
 
 def set_quota_enabled(enabled: bool) -> None:
@@ -417,7 +434,12 @@ def _is_audit_only_generated_set(
     items: Sequence[JobItemRecord],
     output_asset_count: int,
 ) -> bool:
-    """Treat the legacy synthetic set-audit marker as a QA warning only."""
+    """Detect a six-page set whose only failure is the set-audit marker.
+
+    The page images are preserved as deliverables, but the set audit did not
+    pass, so the job stays honestly ``partial``. A FAILED-scope retry never
+    regenerates such a preserved page, so the retry action would be a dead end.
+    """
 
     return bool(
         job.type == JobType.DOMESTIC_MAIN_IMAGE.value
@@ -437,28 +459,26 @@ def job_list_response(
     *,
     output_asset_count: int = 0,
     primary_output_asset_id: str | None = None,
-    generated_set_complete: bool = False,
+    audit_only_set_failure: bool = False,
 ) -> JobListItemResponse:
-    status = JobStatus.COMPLETED if generated_set_complete else JobStatus(job.status)
+    actions = allowed_actions(job)
+    if audit_only_set_failure:
+        actions = [action for action in actions if action != "retry"]
     return JobListItemResponse(
         id=job.id,
         workspace_id=job.workspace_id,
         type="product_replica" if job.type == "product_replica" else JobType(job.type),
-        status=status,
-        stage="completed" if generated_set_complete else job.stage,
+        status=JobStatus(job.status),
+        stage=job.stage,
         display_name=job.display_name,
         task_preset=job_task_preset(job),
         progress=job.progress,
         expected_item_count=job.expected_item_count,
-        succeeded_item_count=(
-            job.expected_item_count
-            if generated_set_complete
-            else job.succeeded_item_count
-        ),
-        failed_item_count=0 if generated_set_complete else job.failed_item_count,
+        succeeded_item_count=job.succeeded_item_count,
+        failed_item_count=job.failed_item_count,
         output_asset_count=output_asset_count,
         primary_output_asset_id=primary_output_asset_id,
-        allowed_actions=["clone"] if generated_set_complete else allowed_actions(job),
+        allowed_actions=actions,
         cost=cost_summary(job),
         created_at=job.created_at,
         updated_at=job.updated_at,
@@ -497,7 +517,7 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
         if relation.direction == JobAssetDirection.OUTPUT.value
         and relation.is_deliverable
     ]
-    generated_set_complete = _is_audit_only_generated_set(
+    audit_only_set_failure = _is_audit_only_generated_set(
         job, items, len(deliverable_outputs)
     )
     base = job_list_response(
@@ -506,7 +526,7 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
         primary_output_asset_id=(
             deliverable_outputs[0].asset_id if deliverable_outputs else None
         ),
-        generated_set_complete=generated_set_complete,
+        audit_only_set_failure=audit_only_set_failure,
     ).model_dump()
     if (
         job.type == JobType.LOCAL_EDIT.value
@@ -529,10 +549,9 @@ def job_detail_response(session: Session, job: JobRecord) -> JobDetailResponse:
         .limit(1)
     )
     plan_payload = plan.payload if plan is not None else None
-    if (
-        plan is not None
-        and plan.schema_version == "aurora-main-image-native-fast-plan-v1"
-    ):
+    from .aurora_main_image_native_fast import FAST_PLAN_SCHEMAS
+
+    if plan is not None and plan.schema_version in FAST_PLAN_SCHEMAS:
         from .aurora_main_image_native_fast import public_payload
 
         plan_payload = public_payload(plan.payload)
@@ -821,6 +840,37 @@ def enforce_active_job_limit(session: Session, workspace_id: str) -> None:
             "ACTIVE_JOB_LIMIT_REACHED",
             "当前工作区活动任务数量已达到上限。",
         )
+    _enforce_running_job_limit(session, workspace_id)
+
+
+def enforce_running_image_job_limit(session: Session, workspace_id: str) -> None:
+    """Running-job cap alone, for transitions that start an existing job
+    (plan confirmation). Takes the same workspace lock as submission."""
+
+    if not _user_active_image_job_limit:
+        return
+    lock_workspace_limits(session, workspace_id)
+    _enforce_running_job_limit(session, workspace_id)
+
+
+def _enforce_running_job_limit(session: Session, workspace_id: str) -> None:
+    limit = _user_active_image_job_limit
+    if limit:
+        running = session.scalar(
+            select(func.count())
+            .select_from(JobRecord)
+            .where(
+                JobRecord.workspace_id == workspace_id,
+                JobRecord.status.in_(RUNNING_JOB_STATUSES),
+            )
+        )
+        if (running or 0) >= limit:
+            raise ApiError(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "USER_ACTIVE_JOB_LIMIT_REACHED",
+                USER_ACTIVE_JOB_LIMIT_MESSAGE.format(limit=limit),
+                {"limit": limit, "running": int(running or 0)},
+            )
 
 
 def _credit_reservation_is_enforced(
@@ -886,7 +936,7 @@ def reserve_credits(
         raise ApiError(
             status.HTTP_409_CONFLICT,
             "CREDIT_ACCOUNT_NOT_CONFIGURED",
-            "工作区额度账户尚未配置。",
+            "积分账户尚未配置，请联系帮助。",
         )
     enforced = credit_enforcement_enabled(workspace_id)
     if enforced:
@@ -898,7 +948,7 @@ def reserve_credits(
         raise ApiError(
             status.HTTP_402_PAYMENT_REQUIRED,
             "BUDGET_LIMIT_EXCEEDED",
-            "当前工作区可用额度不足。",
+            "当前可用积分不足，请充值积分后再试。",
             {"required_credits": credits, "available_credits": available},
         )
     reservation = CreditReservationRecord(
@@ -932,7 +982,7 @@ def reserve_credits(
         )
         if cast(CursorResult[Any], changed).rowcount != 1:
             raise ApiError(
-                402, "BUDGET_LIMIT_EXCEEDED", "当前可用积分不足，请充值后再试。"
+                402, "BUDGET_LIMIT_EXCEEDED", "当前可用积分不足，请充值积分后再试。"
             )
         session.refresh(account)
     session.add(reservation)

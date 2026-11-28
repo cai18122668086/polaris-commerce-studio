@@ -171,6 +171,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 .home-showcase-footer__row p { color: #909685; font-size: 12px; }
 .home-showcase-footer__row nav { display: flex; gap: 24px; margin-left: auto; color: #707764; font-size: 11px; }
 .home-showcase-footer__row nav a:hover { color: #222b14; }
+.home-showcase-footer__filing { display: flex; flex-wrap: wrap; gap: 6px 20px; width: min(1200px, 100%); margin: -12px auto 0; padding: 0 0 26px; color: #909685; font-size: 11px; }
 .commerce-reveal { opacity: 0; translate: 0 18px; transition: opacity .65s var(--reveal-delay, 0ms), translate .65s var(--reveal-delay, 0ms); }
 .commerce-reveal.is-revealed { opacity: 1; translate: 0 0; }
 .commerce-showcase { overflow: hidden; background: #fff; }

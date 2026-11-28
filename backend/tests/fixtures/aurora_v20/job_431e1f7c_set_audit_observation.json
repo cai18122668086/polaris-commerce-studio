@@ -1,0 +1,48 @@
+{
+  "agent_pixel_reviewed": true,
+  "carousel_distinctions": [
+    {
+      "page_index": 1,
+      "why_not_search_cover": "This is a fragrance-focused editorial scene: the bottle is tilted over satin and surrounded by white gardenia flowers, while the headline emphasizes '精致香氛' and '浮光栀子香'. It lacks the cover's dominant whitening-benefit claim, capacity callout, and broad summary of the product's main selling points."
+    },
+    {
+      "page_index": 2,
+      "why_not_search_cover": "This is an ingredient-and-texture detail page. A hand holds the bottle, molecular-style gold spheres decorate the background, and a large circular magnified inset shows white lotion spread on skin. The composition specifically explains the '烟酰胺·色淡林精华配方' rather than presenting a complete listing-level product summary."
+    },
+    {
+      "page_index": 3,
+      "why_not_search_cover": "This is an in-use demonstration page. A model dominates the frame and actively pumps a long stream of lotion onto her forearm; the bottle is angled and partly secondary to the application action. The visible copy focuses on gardenia fragrance, with no capacity block or complete cover-level benefit hierarchy."
+    },
+    {
+      "page_index": 4,
+      "why_not_search_cover": "This is a formula/texture feature page. The right half is occupied by an oversized sculpted lotion swirl and a translucent golden ingredient sphere, paired with the headline '烟酰胺·色淡林精华配方'. It visually prioritizes cream texture and actives rather than the product's overall listing proposition, and it omits the product-name header, whitening-timescale claim, and size."
+    },
+    {
+      "page_index": 5,
+      "why_not_search_cover": "This page is intended as a capacity-specific detail because nearly all supporting copy is reduced to one oversized boxed '260g 大容量' callout beside a clean bottle packshot; it omits the explicit product-name header, '7天美白' promise, and formula summary shown on page 0. However, its centered isolated packshot, sparse neutral background, high legibility, and prominent size claim are also conventional search-thumbnail signals, so it could plausibly be confused with a search cover."
+    }
+  ],
+  "confusable_page_indexes": [
+    5
+  ],
+  "identified_search_page_index": 0,
+  "image_sha256_by_page": {
+    "0": "0c388fd1ca2de3ae6ecb9fa6277e149d6472db3b45eae3daaea847ec478b813f",
+    "1": "ef5f85bd9b81c41baa9538a1328b774891d0f0ccda3e1f7d7859a6e2de1184af",
+    "2": "f92badcb5bced22a7ef3ad6d0daf61c189a8fed2ff1066d0597e3e9493f0197e",
+    "3": "e8b98380cc7ade71b0ddd7c74abfc95c52e99a6f35f49777a76123df5b363b7d",
+    "4": "114d99e32f8dd623f09d2e45b33651518ab67a8bb8410e07105b9f20c598d5a4",
+    "5": "c5c818c25aa374d208c5adb66cc49f20ebcebdd90f7f18e1446828252ded8f37"
+  },
+  "review_mode": "BLIND_SIX_PAGE_ROLE_COMPARISON",
+  "reviewed_page_indexes": [
+    0,
+    1,
+    2,
+    3,
+    4,
+    5
+  ],
+  "search_identification_evidence": "Page 0 is the strongest search-listing cover because it combines a large, unobstructed OLAY pump-bottle packshot with a complete top-level sales hierarchy: the product name at upper left, the dominant benefit claim '7天美白', the ingredient/formula line '烟酰胺·色淡林精华配方', and a boxed '260g 大容量' specification. The foreground arm and visible dollop also communicate body-lotion use and texture in the same frame. This gives a shopper the product identity, principal promise, formula cue, size, package appearance, and usage category at thumbnail level.",
+  "search_role_is_unique": false
+}

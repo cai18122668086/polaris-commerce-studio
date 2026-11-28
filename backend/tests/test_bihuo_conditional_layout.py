@@ -26,13 +26,57 @@ def test_silver_font_fit_preserves_words_clocks_and_restores_compile_hook():
         engine, lambda c, v: received.append((c, v)), cfg, cue
     )
     assert (cfg, cue) == before
-    assert received[0][1] is cue
+    shown = received[0][1]
+    # Fits by a smaller size (same cue), or is laid out as lines of the same words.
+    assert shown is cue or "".join(row["text"] for row in shown["lines"]) == cue["text"]
     assert 70 <= received[0][0]["white_size"] <= 76
     original = engine.whole_line
     with pytest.raises(RuntimeError), adaptive_layout.compilation("bihuo-36-v1"):
         assert engine.whole_line is not original
         raise RuntimeError("compile interrupted")
     assert engine.whole_line is original
+
+
+def test_silver_overlong_line_splits_at_punctuation_keeping_words_and_emphasis():
+    """居中字幕：长句缩字号仍超宽时拆成两行，原文、重点词与时间不变（不再整片失败）。"""
+    from app.bihuo_suite import adaptive_layout
+
+    engine = registry.runtime("bihuo-36-v1").E
+    cfg = {"fonts": registry.fonts("bihuo-36-v1"), "white_size": 76, "gold_size": 82}
+    text = "所以挑家具这件事，得先把标准想清楚一点再去门店慢慢挑"
+    cue = {"text": text, "emphasis_spans": [[3, 5], [12, 14]], "range": [100, 160]}
+    before = copy.deepcopy((cfg, cue))
+    received = []
+    adaptive_layout.silver_whole_line(
+        engine, lambda c, v: received.append((c, v)), cfg, cue
+    )
+    assert (cfg, cue) == before
+    local, shown = received[0]
+    rows = shown["lines"]
+    assert "".join(row["text"] for row in rows) == text
+    assert len(rows) in (2, 3) and shown["range"] == [100, 160]
+    marked = [row["text"][a:b] for row in rows for a, b in row["emphasis_spans"]]
+    assert marked == ["家具", "标准"]
+    for row in rows:
+        width = sum(
+            engine.font(
+                cfg["fonts"]["caption"],
+                local["gold_size"] if active else local["white_size"],
+            ).getlength(part)
+            for part, active in engine.visual.caption_parts({**shown, **row})
+        )
+        assert width <= adaptive_layout.SILVER_MAX_WIDTH
+
+
+def test_split_never_cuts_inside_an_emphasis_span():
+    from app.bihuo_suite.adaptive_layout import split_caption_line
+
+    line = {"text": "一二三四五六七八", "emphasis_spans": [[2, 6]]}
+    rows = split_caption_line(line, 2)
+    assert rows is not None
+    assert all(len(row["emphasis_spans"]) <= 1 for row in rows)
+    assert "".join(row["text"] for row in rows) == "一二三四五六七八"
+    assert sum(len(row["emphasis_spans"]) for row in rows) == 1
 
 
 def test_paper_card_wraps_actual_long_items_without_changing_their_text_or_clocks():
@@ -374,7 +418,7 @@ def test_hook_restoration_and_old_payloads_are_untouched():
     assert module.top.step_nodes is original
     with layout.execution(SimpleNamespace(), {"config": {}}):
         pass
-    for tid in ("bihuo-02-v1", "bihuo-24-v1"):
+    for tid in ("bihuo-02-v1", "bihuo-26-v1"):
         old = {"template_id": tid, "config": {"captions": []}}
         assert layout.prepare(old) is old
     payload["config"]["conditional_layout"]["sha256"] = "changed"
@@ -383,3 +427,13 @@ def test_hook_restoration_and_old_payloads_are_untouched():
         layout.execution(module, payload),
     ):
         pass
+
+
+def test_split_prefers_the_comma_then_falls_back_to_balance():
+    from app.bihuo_suite.adaptive_layout import split_caption_line
+
+    line = {"text": "所以挑家具这件事，得先把标准想清楚", "emphasis_spans": []}
+    first, _ = split_caption_line(line, 2)
+    assert first["text"] == "所以挑家具这件事，"
+    first, second = split_caption_line(line, 2, prefer_punctuation=False)
+    assert abs(len(first["text"]) - len(second["text"])) <= 1

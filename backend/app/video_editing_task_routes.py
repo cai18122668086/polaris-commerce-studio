@@ -16,6 +16,7 @@ from sqlalchemy.engine import CursorResult
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import video_credit_billing as video_credits
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
 from .config import Settings
 from .errors import ApiError
@@ -41,6 +42,7 @@ from .video_editing_catalog import (
     template_dependencies,
 )
 from .video_editing_contracts import (
+    EditingActiveWorksResponse,
     EditingCarriedRevision,
     EditingExportConfirmation,
     EditingFilmReviewWrite,
@@ -150,6 +152,22 @@ def artifact_response(
     }
 
 
+def queue_position(session: Session, row: EditingTaskRecord) -> int | None:
+    """Cheap FIFO estimate: queued tasks created earlier, plus this one."""
+
+    if row.status != "queued":
+        return None
+    ahead = session.scalar(
+        select(func.count())
+        .select_from(EditingTaskRecord)
+        .where(
+            EditingTaskRecord.status == "queued",
+            EditingTaskRecord.created_at < row.created_at,
+        )
+    )
+    return int(ahead or 0) + 1
+
+
 def response(
     row: EditingTaskRecord,
     session: Session,
@@ -237,6 +255,7 @@ def response(
         if row.created_at.tzinfo is None
         else row.created_at,
         "library_release": row.library_release,
+        "queue_position": queue_position(session, row),
         "options": row.options,
         "carried_revision": row.checkpoint.get("carried_revision"),
         "motion_counts": counts,
@@ -876,6 +895,26 @@ def persist_editing_task(
     session.add(row)
     link_preview(row)
     try:
+        # A planning preview is billed on its planning row (one preview each);
+        # a revision preview is billed on its own task.
+        if planning is not None:
+            video_credits.hold(
+                session,
+                settings,
+                workspace.workspace_id,
+                "editing_render",
+                "video_planning",
+                planning.id,
+            )
+        elif carried_revision is not None:
+            video_credits.hold(
+                session,
+                settings,
+                workspace.workspace_id,
+                "editing_render",
+                "video_editing",
+                row.id,
+            )
         session.commit()
     except IntegrityError:
         session.rollback()
@@ -1020,6 +1059,122 @@ def list_editing_works(
     return {"items": items, "next_before": None}
 
 
+ACTIVE_EDITING_STATUSES = frozenset({"queued", "running", "awaiting_review", "failed"})
+ACTIVE_PLANNING_STATUSES = frozenset({"queued", "running", "prepared", "failed"})
+ACTIVE_SCAN_LIMIT = 200
+
+
+def recent_owned_tasks[T: (EditingPlanningTaskRecord, EditingTaskRecord)](
+    session: Session, workspace: WorkspaceContext, model: type[T]
+) -> Sequence[T]:
+    """The owner's newest planning or editing tasks, newest first, bounded."""
+    return session.scalars(
+        select(model)
+        .where(
+            model.workspace_id == workspace.workspace_id,
+            model.owner_user_id == workspace.principal.user_id,
+        )
+        .order_by(model.created_at.desc(), model.id.desc())
+        .limit(ACTIVE_SCAN_LIMIT)
+    ).all()
+
+
+def aware(value: datetime) -> datetime:
+    return value if value.tzinfo else value.replace(tzinfo=UTC)
+
+
+def project_title(project: VideoProjectRecord) -> str:
+    draft = (project.content or {}).get("draft") or {}
+    name = draft.get("name") if isinstance(draft, dict) else None
+    return name.strip() if isinstance(name, str) and name.strip() else "未命名项目"
+
+
+@router.get("/editing-works/active", response_model=EditingActiveWorksResponse)
+def list_active_editing_works(
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+    limit: Annotated[int, Query(ge=1, le=50)] = 20,
+) -> dict[str, Any]:
+    """Each project's newest planning or editing task while it still needs attention.
+
+    Finished works stay in ``/editing-works``; this list covers what is still
+    running, waiting for the user to confirm a preview, or stopped with a
+    failure, so a refreshed page can lead back to the original task.
+    """
+    newest: dict[str, tuple[tuple[datetime, int], str, Any]] = {}
+    scans: tuple[
+        tuple[int, Sequence[EditingPlanningTaskRecord] | Sequence[EditingTaskRecord]],
+        ...,
+    ] = (
+        (0, recent_owned_tasks(session, workspace, EditingPlanningTaskRecord)),
+        (1, recent_owned_tasks(session, workspace, EditingTaskRecord)),
+    )
+    for rank, rows in scans:
+        for row in rows:
+            key = (aware(row.created_at), rank)
+            current = newest.get(row.project_id)
+            if current is None or key > current[0]:
+                kind = "planning" if rank == 0 else "editing"
+                newest[row.project_id] = (key, kind, row)
+    active = [
+        (key, kind, row)
+        for key, kind, row in newest.values()
+        if not row.cancel_requested
+        and row.status
+        in (ACTIVE_PLANNING_STATUSES if kind == "planning" else ACTIVE_EDITING_STATUSES)
+    ]
+    active.sort(key=lambda item: (item[0], item[2].id), reverse=True)
+    active = active[:limit]
+    if not active:
+        return {"items": []}
+    projects = {
+        project.id: project
+        for project in session.scalars(
+            select(VideoProjectRecord).where(
+                VideoProjectRecord.id.in_([row.project_id for _, _, row in active]),
+                VideoProjectRecord.workspace_id == workspace.workspace_id,
+                VideoProjectRecord.owner_user_id == workspace.principal.user_id,
+            )
+        )
+    }
+    reviewing = [
+        row.id
+        for _, kind, row in active
+        if kind == "editing" and row.status == "awaiting_review"
+    ]
+    previews: dict[str, EditingArtifactRecord] = {}
+    if reviewing:
+        for record in session.scalars(
+            select(EditingArtifactRecord)
+            .where(
+                EditingArtifactRecord.task_id.in_(reviewing),
+                EditingArtifactRecord.role == "preview",
+            )
+            .order_by(EditingArtifactRecord.created_at, EditingArtifactRecord.id)
+        ):
+            previews[record.task_id] = record
+    items: list[dict[str, Any]] = []
+    for (created_at, _), kind, row in active:
+        project = projects.get(row.project_id)
+        if project is None:
+            continue
+        preview = previews.get(row.id)
+        if preview is not None and not artifact_visible(row, preview):
+            preview = None
+        items.append(
+            {
+                "kind": kind,
+                "task_id": row.id,
+                "project_id": row.project_id,
+                "project_title": project_title(project),
+                "status": row.status,
+                "created_at": created_at,
+                "preview": artifact_response(row, preview) if preview else None,
+            }
+        )
+    return {"items": items}
+
+
 @router.get(
     "/projects/{project_id}/editing-template-samples",
     response_model=list[EditingTemplateSample],
@@ -1124,6 +1279,8 @@ def cancel_task(
         )
     )
     session.commit()
+    video_credits.reconcile_editing(session, row.id)
+    session.commit()
     session.refresh(row)
     return response(row, session)
 
@@ -1160,6 +1317,20 @@ def retry_task(
     if not cast(CursorResult, result).rowcount:
         session.rollback()
         raise ApiError(409, "EDITING_RETRY_STATE", "只有失败或已取消的任务可以重试。")
+    planning_id = session.scalar(
+        select(EditingPlanningTaskRecord.id).where(
+            EditingPlanningTaskRecord.result["preview_task_id"].as_string() == row.id
+        )
+    )
+    if planning_id or "carried_revision" in row.checkpoint:
+        video_credits.hold(
+            session,
+            request.app.state.settings,
+            row.workspace_id,
+            "editing_render",
+            "video_planning" if planning_id else "video_editing",
+            planning_id or row.id,
+        )
     session.commit()
     session.refresh(row)
     dispatch(request, row.id)
@@ -1305,9 +1476,34 @@ def confirm_export(
     settings = enabled(request)
     row = own_task(session, workspace, str(task_id))
     own_project(session, workspace, row.project_id)
+    return response(
+        confirm_export_task(
+            session,
+            settings,
+            workspace,
+            row,
+            str(body.preview_artifact_id),
+            body.preview_sha256,
+        ),
+        session,
+    )
+
+
+def confirm_export_task(
+    session: Session,
+    settings: Settings,
+    workspace: WorkspaceContext,
+    row: EditingTaskRecord,
+    preview_artifact_id: str,
+    preview_sha256: str,
+) -> EditingTaskRecord:
+    """Deliver the confirmed preview's master as the final (free, idempotent).
+
+    Shared by the review button and batch editing's automatic confirmation.
+    """
     confirmation = {
-        "preview_id": str(body.preview_artifact_id),
-        "preview_sha256": body.preview_sha256,
+        "preview_id": str(preview_artifact_id),
+        "preview_sha256": preview_sha256,
     }
 
     def confirmed(current: EditingTaskRecord) -> bool:
@@ -1321,14 +1517,14 @@ def confirm_export(
             409, "EDITING_EXPORT_REVIEW_STATE", "请选择需要预览确认的剪辑任务。"
         )
     if confirmed(row):
-        return response(row, session)
+        return row
     if row.status != "awaiting_review" or row.cancel_requested:
         raise ApiError(409, "EDITING_EXPORT_REVIEW_STATE", "当前任务未等待高清确认。")
     preview = session.get(EditingArtifactRecord, confirmation["preview_id"])
     if not preview or (preview.task_id, preview.role, preview.sha256) != (
         row.id,
         "preview",
-        body.preview_sha256,
+        preview_sha256,
     ):
         raise ApiError(
             409, "EDITING_PREVIEW_CHANGED", "预览版本不一致，请重新读取并查看。"
@@ -1342,7 +1538,7 @@ def confirm_export(
     if not master:
         session.refresh(row)
         if confirmed(row):
-            return response(row, session)
+            return row
     root = (settings.video_editing_tasks_dir / row.id).resolve()
     if (
         not master
@@ -1383,16 +1579,16 @@ def confirm_export(
     )
     if not cast(CursorResult, result).rowcount:
         session.rollback()
-        current = own_task(session, workspace, str(task_id))
+        current = own_task(session, workspace, row.id)
         if confirmed(current):
-            return response(current, session)
+            return current
         raise ApiError(
             409, "EDITING_EXPORT_REVIEW_STATE", "任务状态已变化，请刷新后核对。"
         )
     master.role = "final"
     session.commit()
     session.refresh(row)
-    return response(row, session)
+    return row
 
 
 @router.put("/editing-tasks/{task_id}/review", response_model=EditingTaskResponse)

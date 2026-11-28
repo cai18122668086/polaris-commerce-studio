@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRef } from "react";
 
 import { apiClient } from "@/lib/api/client";
+import { mediaUrl } from "@/lib/api/base-url";
 import { collectAssetPages } from "@/lib/api/asset-pages";
 import {
   IdempotencyIntentRegistry,
@@ -60,6 +61,29 @@ export function useAsset(
       return unwrapApiResponse(result);
     },
     staleTime: 60_000,
+  });
+}
+
+/** Free local edits left for an image: 3 per image the site generated. */
+export function useFreeEdits(
+  workspaceId: string | undefined,
+  assetId: string | undefined,
+) {
+  return useQuery({
+    queryKey: ["free-edits", workspaceId, assetId],
+    enabled: Boolean(workspaceId && assetId),
+    queryFn: async ({ signal }) => {
+      const result = await apiClient.GET(
+        "/api/v1/workspaces/{workspace_id}/assets/{asset_id}/free-edits",
+        {
+          params: { path: { workspace_id: workspaceId!, asset_id: assetId! } },
+          signal,
+        },
+      );
+      return unwrapApiResponse(result);
+    },
+    staleTime: 0,
+    refetchOnMount: "always",
   });
 }
 
@@ -154,7 +178,13 @@ export async function getAssetAccessUrl(
       signal,
     },
   );
-  return unwrapApiResponse(result);
+  const access = unwrapApiResponse(result);
+  // 站点挂在子路径下时，后端返回的站内根路径（/api/…、/images/…）补上前缀；完整地址不变
+  return {
+    ...access,
+    url: mediaUrl(access.url) ?? access.url,
+    ...(access.original_url ? { original_url: mediaUrl(access.original_url) ?? access.original_url } : {}),
+  };
 }
 
 export function useAssetAccessUrl(

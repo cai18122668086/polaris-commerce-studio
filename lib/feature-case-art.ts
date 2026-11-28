@@ -1,5 +1,6 @@
 import { PLATFORM_SHOWCASE_CASES as PLATFORM_CASE_REVIEW } from "./platform-showcase-cases";
 import { PRODUCT_INPUT_EXAMPLES, RETAINED_WORKSPACE_EXAMPLES } from "./workspace-input-examples";
+import { withBasePath } from "./base-path";
 
 export type FeatureCaseArtData = {
   inputs: { src: string; label: string }[];
@@ -46,8 +47,8 @@ export function getFeatureCaseArt(featureId: string, portrait = false): FeatureC
       "scene-main": { src: PRODUCT_INPUT_EXAMPLES.scene_main.product, label: "商品主体图", goal: "制作商业场景主图" },
       "white-background": { src: PRODUCT_INPUT_EXAMPLES.white_background.product, label: "有背景的商品原图", goal: "去除背景，保留主体" },
       "model-image": { src: PRODUCT_INPUT_EXAMPLES.model_image.product, label: "待展示的服装商品", goal: "生成模特展示画面" },
-      "creative-image": { src: "/images/homepage-features/native-v2-webp/04-input-desktop.webp", label: "清晰商品照片", goal: "展开卖点与活动创意" },
-      "model-pose-transfer": { src: "/images/model-pose-transfer/previews/female-001-960.webp", label: "目标姿势参考", goal: "保留人物服装，换姿态" },
+      "creative-image": { src: withBasePath("/images/homepage-features/native-v2-webp/04-input-desktop.webp"), label: "清晰商品照片", goal: "展开卖点与活动创意" },
+      "model-pose-transfer": { src: withBasePath("/images/model-pose-transfer/previews/female-001-960.webp"), label: "目标姿势参考", goal: "保留人物服装，换姿态" },
     };
     const example = inputExamples[featureId];
     return example ? { inputs: [{ src: example.src, label: example.label }], outputs: [], inputLabel: example.label, outputLabel: example.goal } : undefined;

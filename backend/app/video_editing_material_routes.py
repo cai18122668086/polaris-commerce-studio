@@ -128,10 +128,34 @@ def response(row: EditingMaterialRecord) -> dict:
                 "feedback_observation",
             )
         },
+        **(
+            {"origin": row.origin, "provenance": public_provenance(row.provenance)}
+            if row.origin
+            else {}
+        ),
         "asset_id": PREFIX + row.id,
         "url": ROOT.format(workspace_id=row.workspace_id, project_id=row.project_id)
         + f"/{row.id}/file",
     }
+
+
+PUBLIC_PROVENANCE = (
+    "provider",
+    "page_url",
+    "author",
+    "author_url",
+    "license",
+    "license_url",
+    "attribution",
+    "sentence_index",
+    "work_item_ref",
+    "model",
+    "reused_from",
+)
+
+
+def public_provenance(value: dict | None) -> dict:
+    return {key: value[key] for key in PUBLIC_PROVENANCE if value and key in value}
 
 
 def scope(

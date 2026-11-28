@@ -59,6 +59,7 @@ from .services import (
     set_credit_enforcement_enabled,
     set_credit_pilot_workspaces,
     set_quota_enabled,
+    set_user_active_image_job_limit,
 )
 from .storage import (
     ImageStorage,
@@ -70,8 +71,11 @@ from .support_routes import router as support_router
 from .task_runner import build_task_runner, validate_task_runner_settings
 from .thumbnails import ThumbnailCache
 from .video_assistance import router as video_assistance_router
+from .video_auto_writing import router as video_auto_writing_router
+from .video_avatar_polish import router as video_avatar_polish_router
 from .video_avatar_uploads import router as video_avatar_uploads_router
 from .video_benchmark_routes import router as video_benchmark_router
+from .video_cover_routes import router as video_cover_router
 from .video_editing_library_note_routes import (
     router as video_editing_library_note_router,
 )
@@ -79,11 +83,20 @@ from .video_editing_material_routes import router as video_editing_material_rout
 from .video_editing_native_plan_routes import router as video_editing_native_plan_router
 from .video_editing_planning_routes import router as video_editing_planning_router
 from .video_editing_routes import router as video_editing_router
+from .video_editing_supplement_routes import (
+    material_router as video_editing_supplement_material_router,
+)
+from .video_editing_supplement_routes import router as video_editing_supplement_router
 from .video_editing_task_routes import router as video_editing_task_router
 from .video_editing_transcript_routes import router as video_editing_transcript_router
 from .video_generation import router as video_generation_router
+from .video_personas import router as video_personas_router
+from .video_script_library import router as video_script_library_router
 from .video_studio_routes import router as video_studio_router
 from .video_voice_cloning import router as video_voice_cloning_router
+from .video_work_editing import router as video_work_editing_router
+from .video_work_routes import router as video_work_router
+from .video_work_talking import router as video_work_talking_router
 from .video_writing_routes import router as video_writing_router
 
 logger = logging.getLogger(__name__)
@@ -212,6 +225,7 @@ def create_app(
     validate_task_runner_settings(app_settings)
     set_quota_enabled(app_settings.provider_quota_enabled)
     set_credit_enforcement_enabled(app_settings.workspace_credit_enforcement_enabled)
+    set_user_active_image_job_limit(app_settings.user_active_image_job_limit)
     set_credit_pilot_workspaces(app_settings.workspace_credit_pilot_ids)
     auth_backend = external_auth_backend
     if app_settings.auth_mode == "external":
@@ -240,7 +254,37 @@ def create_app(
         membership_task = asyncio.create_task(maintenance_loop(session_factory))
         from .video_generation_recovery import VideoRecoveryService
         from .video_providers import VideoProviders
+        from .video_work_talking import TalkingSweeper
 
+        talking_sweeper = None
+        if (
+            app_settings.video_talking_sweep_enabled
+            and app_settings.video_providers_enabled
+        ):
+            talking_sweeper = TalkingSweeper(
+                session_factory,
+                app_settings,
+                getattr(application.state, "video_providers", None)
+                or VideoProviders(app_settings),
+            )
+            application.state.talking_sweeper = talking_sweeper
+            talking_sweeper.start()
+        from .video_work_editing import EditingSweeper
+
+        editing_sweeper = None
+        if (
+            app_settings.video_editing_sweep_enabled
+            and app_settings.video_editing_enabled
+        ):
+            editing_sweeper = EditingSweeper(session_factory, app_settings)
+            application.state.editing_sweeper = editing_sweeper
+            editing_sweeper.start()
+        from .video_cover_routes import start_recovery as start_cover_recovery
+
+        if app_settings.video_providers_enabled:
+            # Core roles share this app but cannot see video files: only the
+            # video API (providers enabled) may resume interrupted covers.
+            start_cover_recovery(application)
         video_recovery = None
         if (
             app_settings.video_background_recovery_enabled
@@ -259,6 +303,10 @@ def create_app(
         finally:
             if video_recovery:
                 video_recovery.stop()
+            if talking_sweeper:
+                talking_sweeper.stop()
+            if editing_sweeper:
+                editing_sweeper.stop()
             membership_task.cancel()
             with suppress(asyncio.CancelledError):
                 await membership_task
@@ -363,6 +411,18 @@ def create_app(
         allow_headers=allowed_headers,
         expose_headers=auth_cors_headers,
     )
+    if app_settings.rate_limit_enabled:
+        from .rate_limit import RateLimitMiddleware
+
+        application.add_middleware(
+            RateLimitMiddleware,
+            redis_url=app_settings.rate_limit_redis_url
+            or app_settings.celery_broker_url,
+            window_seconds=app_settings.rate_limit_window_seconds,
+            per_ip=app_settings.rate_limit_per_ip,
+            per_user=app_settings.rate_limit_per_user,
+            trusted_proxies=app_settings.rate_limit_trusted_proxies,
+        )
 
     @application.middleware("http")
     async def request_context(
@@ -555,17 +615,27 @@ def create_app(
     application.include_router(video_studio_router)
     application.include_router(video_voice_cloning_router)
     application.include_router(video_generation_router)
+    application.include_router(video_work_router)
+    application.include_router(video_work_talking_router)
+    application.include_router(video_work_editing_router)
     application.include_router(video_avatar_uploads_router)
+    application.include_router(video_personas_router)
+    application.include_router(video_avatar_polish_router)
+    application.include_router(video_cover_router)
     application.include_router(video_editing_router)
     application.include_router(video_editing_native_plan_router)
     application.include_router(video_editing_planning_router)
     application.include_router(video_editing_task_router)
     application.include_router(video_editing_material_router)
+    application.include_router(video_editing_supplement_router)
+    application.include_router(video_editing_supplement_material_router)
     application.include_router(video_editing_library_note_router)
     application.include_router(video_editing_transcript_router)
     application.include_router(video_assistance_router)
     application.include_router(video_benchmark_router)
     application.include_router(video_writing_router)
+    application.include_router(video_auto_writing_router)
+    application.include_router(video_script_library_router)
     application.include_router(credit_router)
     application.include_router(processing_consent_router)
     application.include_router(creation_summary_router)

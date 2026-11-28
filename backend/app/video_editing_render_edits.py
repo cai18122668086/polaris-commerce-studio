@@ -24,6 +24,17 @@ from .video_editing_question_branch import (
 
 SOURCE_GROUP = "Z-M00"
 MUSIC_REDUCTION_DB = 6
+# "明显" lifts the planned bed a little; speech ducking still runs on top.
+MUSIC_RAISE_DB = 3
+
+
+def music_gain_offset(choice: str | None) -> float:
+    """Background-music level tiers: 轻 (lower), 标准 (template), 明显 (raise)."""
+    if choice == "lower":
+        return -MUSIC_REDUCTION_DB
+    if choice == "raise":
+        return MUSIC_RAISE_DB
+    return 0
 HY_PORTRAIT_INSETS = frozenset(("HY-A5", PRICE_CARD_GROUP))
 NATIVE_PORTRAIT_INSETS = HY_PORTRAIT_INSETS | {QUESTION_GROUP}
 FULL_FRAME = [0, 0, 1, 1]
@@ -116,12 +127,22 @@ def available_render_edits(
     )
 
 
+def sound_cue_beats(recipes: dict) -> set[str]:
+    """Segments that carry at least one original FX cue: only these can be muted."""
+    return {
+        cue["beat_id"]
+        for cue in ((recipes.get("sound") or {}).get("fx") or [])
+        if isinstance(cue, dict) and cue.get("beat_id")
+    }
+
+
 def validate_render_edits(
     edits: NativeRenderEdits, semantic: dict, recipes: dict, choices: dict | None
 ) -> None:
     editable, has_music = available_render_edits(semantic, recipes, choices)
     if (
         not set(edits.source_only_beat_ids).issubset(editable)
+        or not set(edits.sound_muted_beat_ids).issubset(sound_cue_beats(recipes))
         or (edits.music is not None and not has_music)
         or (
             edits.music_track_id is not None

@@ -450,3 +450,63 @@
     backdrop-filter: none;
   }
 }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .dialog{border:1px solid #591c02;background:rgb(21 20 19 / 0.86);color:#fa682a;box-shadow:0 28px 90px rgb(0 0 0 / 0.565);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.627)}
+:global(.theme-ember) .top{background:linear-gradient(115deg,#fa682a,#fa682a);color:#0f0e0d;border-bottom:3px solid #482902}
+:global(.theme-ember) .top:before,:global(.theme-ember) .top:after{border-top:3px solid #482902;box-shadow:0 -5px 0 rgb(255 255 255 / 0.031),0 -10px 0 rgb(255 255 255 / 0.017)}
+:global(.theme-ember) .badge{color:#482902}
+:global(.theme-ember) .top h2{font-weight:400}
+:global(.theme-ember) .close{color:#0f0e0d;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .priceValue strong,:global(.theme-ember) .creditValue strong{font-weight:400}
+:global(.theme-ember) .priceValue>span{font-weight:400}
+:global(.theme-ember) .creditValue{border-left:1px solid #482902}
+:global(.theme-ember) .creditValue>span{font-weight:500}
+:global(.theme-ember) .countdown{border:1px solid #482902;background:#482902}
+:global(.theme-ember) .countdown b{background:#fa682a;color:#0f0e0d;border-radius:9px}
+:global(.theme-ember) .buy{border:1px solid #482902;background:linear-gradient(115deg,#482902,#482902);color:#fa682a;font-weight:500}
+:global(.theme-ember) .buy:hover{background:#482902}
+:global(.theme-ember) .bottom{color:#fa682a}
+:global(.theme-ember) .bottom details{color:#fa682a}
+:global(.theme-ember) .dialog button:focus-visible,:global(.theme-ember) .buy:focus-visible,:global(.theme-ember) .bottom summary:focus-visible{outline:3px solid #dc7f06}
+:global(.theme-ember) .floating{border:1px solid #482902;background:linear-gradient(135deg,#fa682a,#fa682a);color:#0f0e0d;box-shadow:0 7px 20px rgb(0 0 0 / 0.36)}
+:global(.theme-ember) .floating:before,:global(.theme-ember) .floating:after{border:2px solid #482902}
+:global(.theme-ember) .floatingPrice{color:#482902;font-weight:400}
+:global(.theme-ember) .floating time{background:#482902;color:#fa682a;font-weight:500}
+:global(.theme-ember) .floatingClose{border:1px solid #482902;background:rgb(21 20 19 / 0.86);color:#fa682a;box-shadow:0 2px 6px rgb(0 0 0 / 0.184);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .floating:focus-visible,:global(.theme-ember) .floatingClose:focus-visible{outline:3px solid #dc7f06}
+:global(.theme-ember) .stageHint{border:1px solid #2b2926;background:rgb(255 250 244 / 0.025);color:#fa682a;border-radius:999px}
+:global(.theme-ember) .stageHint a{color:#fa682a}
+:global(.theme-ember) .stageHint a:focus-visible{outline:3px solid #dc7f06}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .dialog{border:1px solid #f2cfb8;background:#f3f3f2;color:#b23a0e;box-shadow:0 28px 90px rgb(30 27 22 / 0.314);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .dialog::backdrop{background:rgb(27 26 25 / 0.502)}
+:global(.theme-plaster) .top{background:linear-gradient(115deg,#d44511,#b23a0e);color:#ffffff;border-bottom:3px solid #f6dbca}
+:global(.theme-plaster) .top:before,:global(.theme-plaster) .top:after{border-top:3px solid #f7e1d2;box-shadow:0 -5px 0 rgb(255 255 255 / 0.31),0 -10px 0 rgb(255 255 255 / 0.173)}
+:global(.theme-plaster) .badge{color:#f9e7db}
+:global(.theme-plaster) .top h2{font-weight:400}
+:global(.theme-plaster) .close{color:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .priceValue strong,:global(.theme-plaster) .creditValue strong{font-weight:400}
+:global(.theme-plaster) .priceValue>span{font-weight:400}
+:global(.theme-plaster) .creditValue{border-left:1px solid #efc4a7}
+:global(.theme-plaster) .creditValue>span{font-weight:500}
+:global(.theme-plaster) .countdown{border:1px solid #efc1a3;background:#f9e8dd}
+:global(.theme-plaster) .countdown b{background:#b23a0e;color:#ffffff;border-radius:9px}
+:global(.theme-plaster) .buy{border:1px solid #f7dfd0;background:linear-gradient(115deg,#f9e8dd,#f3d2bc);color:#b23a0e;font-weight:500}
+:global(.theme-plaster) .buy:hover{background:#f7e2d3}
+:global(.theme-plaster) .bottom{color:#b23a0e}
+:global(.theme-plaster) .bottom details{color:#e44a12}
+:global(.theme-plaster) .dialog button:focus-visible,:global(.theme-plaster) .buy:focus-visible,:global(.theme-plaster) .bottom summary:focus-visible{outline:3px solid #cb6e10}
+:global(.theme-plaster) .floating{border:1px solid #cb6e10;background:linear-gradient(135deg,#d74611,#b23a0e);color:#ffffff;box-shadow:0 7px 20px rgb(30 27 22 / 0.2)}
+:global(.theme-plaster) .floating:before,:global(.theme-plaster) .floating:after{border:2px solid #f5d8c4}
+:global(.theme-plaster) .floatingPrice{color:#f7e1d2;font-weight:400}
+:global(.theme-plaster) .floating time{background:#f7e0d1;color:#b23a0e;font-weight:500}
+:global(.theme-plaster) .floatingClose{border:1px solid #f3d1bb;background:#f4f4f3;color:#b23a0e;box-shadow:0 2px 6px rgb(30 27 22 / 0.102);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .floating:focus-visible,:global(.theme-plaster) .floatingClose:focus-visible{outline:3px solid #cb6e10}
+:global(.theme-plaster) .stageHint{border:1px solid #d7d6d3;background:#f2f2f1;color:#b63b0f;border-radius:999px}
+:global(.theme-plaster) .stageHint a{color:#b23a0e}
+:global(.theme-plaster) .stageHint a:focus-visible{outline:3px solid #cb6e10}
+/* plaster:end */

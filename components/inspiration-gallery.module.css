@@ -333,3 +333,497 @@
 .card .cardBody h3{display:block;margin:12px 0 0;color:#34303b;font-size:14px;font-weight:650;line-height:1.6}.card .cardBody .cardFooter{justify-content:space-between}.card .cardFooter small{display:block;color:#7c7387;font-size:11px}
 @media(max-width:900px){.materialPanel .grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:620px){.materialPanel .grid{grid-template-columns:minmax(0,1fr)}.catalogSummary{align-items:flex-start;gap:7px;flex-direction:column}.templateArtwork{gap:10px;padding:22px}.templateArtwork>strong{font-size:20px}.templateArtwork>svg{width:28px;height:28px;flex-shrink:0}.card .templateArtwork>p{font-size:12px}.templateArtwork>small{display:none}.templateModal .templateArtwork{min-height:300px}}
+
+
+/* 未登录引导：克制的暗色条，主按钮用熔光；被点击操作触发时描边提亮一次。 */
+.loginGate{display:flex;align-items:center;justify-content:space-between;gap:12px 18px;margin-top:12px;padding:12px 14px;border:1px solid #2a2928;border-radius:10px;background:rgb(255 250 244 / 0.025);text-align:left}
+.loginGate p{display:grid;gap:3px;min-width:0;margin:0}
+.loginGate strong{color:#edeae4;font-size:13px;font-weight:600}
+.loginGate span{color:#8f8b84;font-size:12px;line-height:1.5}
+.loginGate[data-prompted]{border-color:#591c02}
+.loginGateButton{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;min-height:36px;padding:0 16px;border-radius:8px;background:#edeae4;color:#0f0e0d;font-size:13px;font-weight:600;text-decoration:none;white-space:nowrap}
+.loginGateButton:hover{background:#ff6a2b;color:#0b0b0b}
+@media(max-width:620px){.loginGate{flex-direction:column;align-items:stretch}.loginGateButton{width:100%}}
+
+/* 石膏灰白（html.theme-plaster）手调：页面露出石膏底，首屏去掉原来的淡紫光斑，只留一点暖光 */
+:global(html.theme-plaster) .page{background:transparent}
+:global(html.theme-plaster) .hero{background:radial-gradient(40% 70% at 80% 30%,rgb(240 122 43 / 6%),transparent 70%),transparent}
+:global(html.theme-plaster) .composerControls .repositoryButton{color:#1a1a19;border-color:rgb(30 28 24 / 14%)}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .page{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .composerControls .repositoryButton{background:rgb(255 250 244 / 0.04);border-radius:999px}
+:global(.theme-ember) .focusBrand :global(.brand-copy strong){font-weight:500}
+:global(.theme-ember) .focusBrand :global(.brand-copy small){color:rgb(15 14 13 / 0.44)}
+:global(.theme-ember) .focusNav{border-bottom:1px solid #1f1e1d;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .focusNavInner>strong{color:#e9e8e7}
+:global(.theme-ember) .focusNavInner nav a{color:#a4a19c}
+:global(.theme-ember) .focusNavInner nav a:hover,:global(.theme-ember) .focusNavInner nav a.navActive{color:#e9e8e7}
+:global(.theme-ember) .focusNavInner nav a.navActive::after{background:#e6e2db;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .navAccount{color:#89837a}
+:global(.theme-ember) .hero{background:linear-gradient(110deg,rgb(255 250 244 / 0.025) 0%,rgb(255 250 244 / 0.04) 64%,rgb(255 250 244 / 0.06) 100%);color:#e9e8e7}
+:global(.theme-ember) .kicker{color:#aca7a1}
+:global(.theme-ember) .hero h1 span{color:#89837a}
+:global(.theme-ember) .hero p{color:#9f9992}
+:global(.theme-ember) .command{border:1px solid #591c02;background:rgb(255 250 244 / 0.04);box-shadow:0 12px 30px rgb(0 0 0 / 0.141);border-radius:20px}
+:global(.theme-ember) .command input{color:#e9e8e7}
+:global(.theme-ember) .command input::placeholder{color:#605c56}
+:global(.theme-ember) .command button{color:#0f0e0d;background:#e6e2db;border-radius:999px}
+:global(.theme-ember) .heroMeta{color:#736e66}
+:global(.theme-ember) .artCircle{border:1px solid rgb(137 131 122 / 0.4);box-shadow:0 0 0 34px rgb(0 0 0 / 0.085),0 0 0 68px rgb(0 0 0 / 0.056)}
+:global(.theme-ember) .artLabel{color:#89837a}
+:global(.theme-ember) .artLabel strong{color:#e9e8e7}
+:global(.theme-ember) .eyebrow{color:#aca7a1;font-weight:500}
+:global(.theme-ember) .filters{background:rgb(255 250 244 / 0.04);border-radius:20px}
+:global(.theme-ember) .filterRow button:hover{background:rgb(255 250 244 / 0.06);color:#aca7a1}
+:global(.theme-ember) .filterRow button.active{color:#0f0e0d;background:#e6e2db;box-shadow:0 4px 10px rgb(0 0 0 / 0.36)}
+:global(.theme-ember) .card{background:rgb(255 250 244 / 0.04);box-shadow:0 5px 18px rgb(0 0 0 / 0.064);border-radius:22px}
+:global(.theme-ember) .card:hover{box-shadow:0 14px 30px rgb(0 0 0 / 0.148)}
+:global(.theme-ember) .imageWrap{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .imageWrap>span{border:1px solid rgb(15 14 13 / 0.533);color:#0f0e0d;background:rgb(0 0 0 / 0.824);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .imageHover{background:rgb(0 0 0 / 0.627);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .imageHover button{border:1px solid rgb(15 14 13 / 0.533);color:#0f0e0d;background:#000000;border-radius:999px}
+:global(.theme-ember) .cardTags span{color:#aca7a1;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .cardFooter button{color:#aca7a1;font-weight:500}
+:global(.theme-ember) .overlay{background:rgb(0 0 0 / 0.417);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .drawer{background:rgb(255 250 244 / 0.04);box-shadow:-15px 0 40px rgb(0 0 0 / 0.24)}
+:global(.theme-ember) .lock{border:1px solid #1c1b19;background:rgb(255 250 244 / 0.025);border-radius:15px}
+:global(.theme-ember) .lock strong{color:#aca7a1}
+:global(.theme-ember) .drawer dd{font-weight:500}
+:global(.theme-ember) .forbidden{color:#fa682a;background:rgb(255 250 244 / 0.06);border-radius:12px}
+:global(.theme-ember) .primary,:global(.theme-ember) .secondary{font-weight:500}
+:global(.theme-ember) .primary{color:#0f0e0d;background:#e6e2db}
+:global(.theme-ember) .secondary{background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .manual{color:#aca7a1}
+:global(.theme-ember) .page{background:rgb(255 250 244 / 0.04);color:#e9e8e7}
+:global(.theme-ember) .focusNav{background:#e9e8e7;color:#0f0e0d}
+:global(.theme-ember) .focusNavInner>strong{color:#0f0e0d;font-weight:400}
+:global(.theme-ember) .focusNavInner nav a{color:#1d1c1b}
+:global(.theme-ember) .focusNavInner nav a:hover,:global(.theme-ember) .focusNavInner nav a.navActive{color:#89837a}
+:global(.theme-ember) .focusNavInner nav a.navActive::after{background:#e6e2db}
+:global(.theme-ember) .navRight>span{background:rgb(255 250 244 / 0.04);color:#d2d0ce;border-radius:11px}
+:global(.theme-ember) .navRight .navAccount{color:#0f0e0d;background:#e9e8e7;border:1px solid #d2d0ce;border-radius:11px}
+:global(.theme-ember) .notice{background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .notice button{background:rgb(255 250 244 / 0.04);color:#bab8b5;border-radius:999px}
+:global(.theme-ember) .hero{background:radial-gradient(circle at 82% 33%,rgb(255 250 244 / 0.06) 0,rgb(255 250 244 / 0.04) 30%),rgb(255 250 244 / 0.04);color:#e9e8e7}
+:global(.theme-ember) .heroTitle svg{color:#89837a;fill:#89837a}
+:global(.theme-ember) .command{border:1px solid #232221;background:rgb(255 250 244 / 0.04);box-shadow:0 7px 26px rgb(0 0 0 / 0.113)}
+:global(.theme-ember) .uploadBox{border:1px dashed #2b2928;color:#482902}
+:global(.theme-ember) .command textarea{color:#e9e8e7}
+:global(.theme-ember) .command textarea::placeholder{color:#3f3d3a}
+:global(.theme-ember) .commandBar button{border:1px solid #1d1c1b;background:rgb(255 250 244 / 0.04);color:#bab8b5;border-radius:999px}
+:global(.theme-ember) .commandBar button:hover{border-color:#89837a}
+:global(.theme-ember) .commandBar small{color:#6a6762}
+:global(.theme-ember) .commandBar .commandSubmit{color:#0f0e0d;background:#e6e2db}
+:global(.theme-ember) .featureLinks button{color:#e9e8e7}
+:global(.theme-ember) .featureLinks button svg{color:#e9e8e7;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .featureLinks button:nth-child(2) svg{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .featureLinks button:nth-child(3) svg{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .featureLinks button:nth-child(4) svg{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .featureLinks button:nth-child(5) svg{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .featureLinks em{background:rgb(21 20 19 / 0.86);color:#e9e8e7;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .materialPanel{border:1px solid #1c1b19;background:rgb(255 250 244 / 0.04);box-shadow:0 10px 34px rgb(0 0 0 / 0.162)}
+:global(.theme-ember) .materialTitle i{background:rgb(255 250 244 / 0.09)}
+:global(.theme-ember) .materialTitle span{color:#bab8b5}
+:global(.theme-ember) .materialHeader p{color:#6a6762}
+:global(.theme-ember) .imageWrap{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .vipGate{color:#0f0e0d;background:#e9e8e6}
+:global(.theme-ember) .vipGate:hover{background:#e6e2db}
+:global(.theme-ember) .overlay{background:rgb(0 0 0 / 0.725)}
+:global(.theme-ember) .focusModal{background:rgb(255 250 244 / 0.04);box-shadow:0 18px 60px rgb(0 0 0 / 0.84);border-radius:22px}
+:global(.theme-ember) .focusModal .close{color:#a4a19c}
+:global(.theme-ember) .modalGallery{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .inputTile,:global(.theme-ember) .resultTile{background:rgb(255 250 244 / 0.06);border-radius:14px}
+:global(.theme-ember) .inputTile span,:global(.theme-ember) .resultTile>span{background:#a4a19c;color:#0f0e0d;border-radius:8px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .resultTile img{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .resultTile small{background:rgb(21 20 19 / 0.86);color:#a4a19c;border-radius:16px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .modalInfo>p{color:#a4a19c}
+:global(.theme-ember) .modalMeta{color:#746e67}
+:global(.theme-ember) .modalApply{color:#0f0e0d;background:#e9e8e6;border-radius:12px;font-weight:500}
+:global(.theme-ember) .modalApply:hover{background:#e6e2db}
+:global(.theme-ember) .emptyInput{color:#6a6762;background:rgb(255 250 244 / 0.06);border-radius:14px}
+:global(.theme-ember) .hero{background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .materialPanel{box-shadow:0 12px 36px rgb(0 0 0 / 0.18)}
+:global(.theme-ember) .filters{background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .filterRow button.active{color:#0f0e0d;background:#e9e8e6}
+:global(.theme-ember) .card{background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .card:hover{box-shadow:0 8px 18px rgb(0 0 0 / 0.141)}
+:global(.theme-ember) .imageWrap{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .imageWrap>span{background:#bab8b5;color:#0f0e0d;border-radius:8px}
+:global(.theme-ember) .imageHover{background:rgb(0 0 0 / 0.314)}
+:global(.theme-ember) .cardBody{background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .card h3{font-weight:500}
+:global(.theme-ember) .inputTile img,:global(.theme-ember) .resultTile img{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .imageWrap{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .imageWrap img{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .inputTile img,:global(.theme-ember) .resultTile img{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .hero{background:radial-gradient(circle at 82% 33%,rgb(255 250 244 / 0.06) 0,rgb(255 250 244 / 0.04) 30%),rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .heroTitle h1{background:linear-gradient(100deg,#e9e8e7 0%,#afaba5 26%,#e6e2db 49%,#e9e8e6 72%,#e6e2db 100%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text}
+:global(.theme-ember) .heroTitle svg{color:#89837a;fill:#89837a;stroke:#89837a}
+:global(.theme-ember) .command{border:1px solid #232120;box-shadow:0 8px 28px rgb(0 0 0 / 0.092)}
+:global(.theme-ember) .uploadBox{color:#482902}
+:global(.theme-ember) .composerAssetTile,:global(.theme-ember) .composerAddTile{border:1px solid #2a2927;background:rgb(255 250 244 / 0.025);border-radius:9px}
+:global(.theme-ember) .composerAssetTile>span{color:#0f0e0d;background:rgb(0 0 0 / 0.75);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .assetReplaceButton{color:#0f0e0d;background:rgb(0 0 0 / 0.75);border-radius:999px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .assetRemoveButton{color:#0f0e0d;background:rgb(0 0 0 / 0.75);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .aspectPicker{border:1px solid #21201f;color:#bab8b5}
+:global(.theme-ember) .aspectPicker select{color:#bab8b5}
+:global(.theme-ember) .aspectPicker select:disabled{color:#6a6762}
+:global(.theme-ember) .composerAssetTile span{color:#0f0e0d;background:rgb(0 0 0 / 0.75);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .resultAssetTile{border-color:#591c02;background:rgb(255 250 244 / 0.025);box-shadow:0 5px 16px rgb(0 0 0 / 0.304)}
+:global(.theme-ember) .resultAssetTile img{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .resultAssetTile span{background:rgb(230 226 219 / 0.925);font-weight:500}
+:global(.theme-ember) .resultPreviewOverlay{background:rgb(0 0 0 / 0.975);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .resultPreviewOverlay img{background:rgb(255 250 244 / 0.04);box-shadow:0 24px 80px #000000;border-radius:16px}
+:global(.theme-ember) .resultPreviewClose{border:1px solid rgb(15 14 13 / 0.4);color:#0f0e0d;background:rgb(0 0 0 / 0.5);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .resultShowcase{border:1px solid #591c02;background:linear-gradient(110deg,rgb(255 250 244 / 0.025),rgb(255 250 244 / 0.04));box-shadow:0 9px 24px rgb(0 0 0 / 0.169);border-radius:22px}
+:global(.theme-ember) .resultShowcaseMeta{color:#e9e8e7}
+:global(.theme-ember) .resultShowcaseMeta span{color:#89837a}
+:global(.theme-ember) .resultShowcase img{background:rgb(255 250 244 / 0.025);border-radius:11px}
+:global(.theme-ember) .composerAddTile{color:#482902;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .commandBar button{border-color:#21201f;color:#bab8b5;background:rgb(255 250 244 / 0.04);border-radius:999px}
+:global(.theme-ember) .commandBar button:first-child{color:#d2d0ce}
+:global(.theme-ember) .commandBar .commandSubmit{color:#2b2926;background:#e9e8e7}
+:global(.theme-ember) .composerGenerating .composerAssetTile::after{border:3px solid rgb(15 14 13 / 0.533);border-top-color:#0f0e0d;filter:drop-shadow(0 1px 3px rgb(0 0 0 / 0.96))}
+:global(.theme-ember) .generationStatus{color:#8f8b85}
+:global(.theme-ember) .generationStatus b{color:#89837a;font-weight:500}
+:global(.theme-ember) .composeError{color:#fa682a}
+:global(.theme-ember) .modalInfo>.modalApply:not(:last-child){border:1px solid #2c2a27;color:#bab8b5;background:rgb(21 20 19 / 0.86);border-radius:9px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3);font-weight:500}
+:global(.theme-ember) .modalInfo>.modalApply:not(:last-child):hover{color:#e9e8e6;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .page{background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .focusNav{background:#e9e8e7;color:#0f0e0d}
+:global(.theme-ember) .focusNavInner>strong{color:#0f0e0d}
+:global(.theme-ember) .focusNavInner nav a{color:#0f0e0d}
+:global(.theme-ember) .focusNavInner nav a.navActive{color:#262422}
+:global(.theme-ember) .focusNavInner nav a.navActive::after{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .focusNotice{background:rgb(255 250 244 / 0.06);color:#e9e8e6}
+:global(.theme-ember) .focusNotice button{color:#bab8b5;background:rgb(255 250 244 / 0.04);border-radius:999px}
+:global(.theme-ember) .hero{background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .heroTitle h1{background:linear-gradient(100deg,#e9e8e7 0%,#fa682a 28%,#e6e2db 50%,#e9e8e6 72%,#e6e2db 100%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;font-weight:400}
+:global(.theme-ember) .focusCrescent{background:rgb(255 250 244 / 0.06);box-shadow:inset 9px 0 0 rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .command{border:1px solid #242321;background:rgb(255 250 244 / 0.04);box-shadow:0 8px 24px rgb(0 0 0 / 0.092)}
+:global(.theme-ember) .uploadBox{color:#482902}
+:global(.theme-ember) .composerAssetTile,:global(.theme-ember) .composerAddTile{border:1px solid #2a2927}
+:global(.theme-ember) .composerAddTile{color:#482902;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .command textarea,:global(.theme-ember) .command:not(.commandWithAssets) textarea{color:#e9e8e7}
+:global(.theme-ember) .commandBar button,:global(.theme-ember) .aspectTrigger{border:1px solid #22211f;color:#bab8b5;background:rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .commandBar button:hover,:global(.theme-ember) .aspectTrigger:hover{border-color:#2f2d2b;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .aspectMenu{background:rgb(21 20 19 / 0.86);box-shadow:0 8px 24px rgb(0 0 0 / 0.24);color:#696661;border-radius:9px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .aspectGrid button{border:1px solid #1e1d1c;color:#bab8b5;background:rgb(255 250 244 / 0.04);border-radius:999px}
+:global(.theme-ember) .aspectGrid button:hover,:global(.theme-ember) .aspectGrid button.aspectSelected{border-color:#482902;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .modelButton{background:rgb(255 250 244 / 0.025)!important;border-color:#201e1c!important}
+:global(.theme-ember) .commandBar small{color:#6a6762}
+:global(.theme-ember) .commandBar .commandSubmit{color:#252321;background:#e9e8e7}
+:global(.theme-ember) .countMenu{border:1px solid #1d1c1b;background:rgb(21 20 19 / 0.86);box-shadow:0 8px 24px rgb(0 0 0 / 0.24);border-radius:12px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .countMenu button:hover,:global(.theme-ember) .countMenu button.countSelected{background:rgb(255 250 244 / 0.06)!important;color:#dc7f06!important}
+:global(.theme-ember) .featureLinks button{color:#e9e8e7}
+:global(.theme-ember) .featureLinks button svg{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .featureLinks button:first-child svg{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .featureLinks button:nth-child(2) svg{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .featureLinks button:nth-child(3) svg{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .featureLinks button:nth-child(4) svg{background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .featureLinks button:nth-child(5) svg{background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .featureLinks button em{color:#b1ada8;background:rgb(21 20 19 / 0.86);border-radius:8px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .command .assetRemoveButton{border:2px solid #0f0e0d;color:#8f8b85;background:#595652}
+:global(.theme-ember) .repositoryOverlay{background:rgb(0 0 0 / 0.65);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .repositoryModal{background:rgb(255 250 244 / 0.04);box-shadow:0 20px 70px rgb(0 0 0 / 0.6);border-radius:14px}
+:global(.theme-ember) .repositoryClose{color:#7c7873;border-radius:9px}
+:global(.theme-ember) .repositoryClose:hover{background:rgb(255 250 244 / 0.025);color:#e9e8e7}
+:global(.theme-ember) .repositoryTile{background:rgb(255 250 244 / 0.025);border-radius:8px}
+:global(.theme-ember) .repositoryTile:hover{border-color:#482902}
+:global(.theme-ember) .repositoryTile[data-selected="true"]{border-color:#482902;box-shadow:0 0 0 2px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .repositoryCheck{color:#0f0e0d;background:#482902;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3);font-weight:500}
+:global(.theme-ember) .repositoryState{color:#6a6762}
+:global(.theme-ember) .repositoryPager{color:#bab8b5}
+:global(.theme-ember) .repositoryPager button{color:#bab8b5;background:rgb(255 250 244 / 0.04);border-radius:999px}
+:global(.theme-ember) .repositoryPager button:hover:not(:disabled),:global(.theme-ember) .repositoryPager button.repositoryPageSelected{border:1px solid #482902;color:#dc7f06;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .repositoryPager button:disabled{color:#393735}
+:global(.theme-ember) .repositoryPager span{color:#6a6762}
+:global(.theme-ember) .repositoryActions button{border:1px solid #2b2928;color:#a4a19c;background:rgb(255 250 244 / 0.04);border-radius:999px}
+:global(.theme-ember) .repositoryActions .repositoryConfirm{border-color:#482902;color:#dc7f06;background:#482902}
+:global(.theme-ember) .aspectMenu button:hover,:global(.theme-ember) .aspectMenu button.aspectSelected,:global(.theme-ember) .countMenu button:hover,:global(.theme-ember) .countMenu button.countSelected{border-color:#89837a!important;background:rgb(255 250 244 / 0.06)!important;color:#aca7a1!important}
+:global(.theme-ember) .repositoryTile:hover,:global(.theme-ember) .repositoryTile[data-selected="true"]{border-color:#89837a;box-shadow:0 0 0 2px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .repositoryCheck{background:#e6e2db}
+:global(.theme-ember) .repositoryPager button:hover:not(:disabled),:global(.theme-ember) .repositoryPager button.repositoryPageSelected{border-color:#89837a;color:#aca7a1;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .repositoryActions .repositoryConfirm{border-color:#89837a;background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .resultShowcaseGrid button{background:rgb(255 250 244 / 0.025);border-radius:999px}
+:global(.theme-ember) .resultShowcaseGrid img{background:rgb(255 250 244 / 0.025);border-radius:11px}
+:global(.theme-ember) .hero{background:radial-gradient(ellipse 430px 310px at 91% 22%,rgb(255 250 244 / 0.06) 0%,rgb(255 250 244 / 0.025) 42%,transparent 74%),
+    rgb(255 250 244 / 0.04)}
+:global(.theme-ember) .hero::after{background:radial-gradient(ellipse at 38% 45%,rgb(21 20 19 / 0.9) 0%,rgb(21 20 19 / 0.9) 42%,transparent 72%);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .composerAssetTile > p[role="alert"]{border:1px solid #1d1c1b;background:rgb(21 20 19 / 0.86);box-shadow:0 4px 12px rgb(0 0 0 / 0.24);border-radius:8px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .command .composerAddTile{color:#aca7a1;background:rgb(255 250 244 / 0.025);border-radius:9px}
+:global(.theme-ember) .command .assetReplaceButton{color:#0f0e0d;background:rgb(0 0 0 / 0.75);border-radius:999px}
+:global(.theme-ember) .page{color:#e9e8e7}
+:global(.theme-ember) .hero{color:#e9e8e7}
+:global(.theme-ember) .heroTitle svg{color:#857e76}
+:global(.theme-ember) .heroTitle h1{color:#e9e8e7}
+:global(.theme-ember) .discoverySteps{color:#7c766e}
+:global(.theme-ember) .discoverySteps > span{color:#4c4844}
+:global(.theme-ember) .discoverySteps a{color:#bab6b1;border-bottom:1px solid #423f3b}
+:global(.theme-ember) .materialPanel{border-color:#252321;box-shadow:0 7px 27px rgb(0 0 0 / 0.056)}
+:global(.theme-ember) .eyebrow{color:#969088}
+:global(.theme-ember) .filterRow button:hover{color:#e9e8e7;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .filterRow button.active{color:#e9e8e7;background:rgb(255 250 244 / 0.06);border-color:#2e2b28}
+:global(.theme-ember) .card{border-color:#262421}
+:global(.theme-ember) .card:hover{border-color:#413e3a;box-shadow:0 10px 24px rgb(0 0 0 / 0.141)}
+:global(.theme-ember) .cardFooter button{color:#aaa59f;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .cardFooter button:hover{color:#e9e8e7;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .catalogEmpty{border:1px dashed #2c2a27;color:#645f59;background:rgb(255 250 244 / 0.025);border-radius:14px}
+:global(.theme-ember) .catalogEmpty strong{color:#b6b2ad}
+:global(.theme-ember) .catalogEmpty button,:global(.theme-ember) .catalogEmpty a{border:1px solid #322f2c;background:rgb(255 250 244 / 0.025);color:#e9e8e7}
+:global(.theme-ember) .caseImportRetry{border:1px solid #33302d;background:rgb(255 250 244 / 0.04);color:#e5e4e2;border-radius:11px;font-weight:500}
+:global(.theme-ember) .caseImportRetry:hover:not(:disabled){border-color:#423f3b;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .catalogSummary{border-bottom:1px solid #23211f;color:#9e9992}
+:global(.theme-ember) .catalogSummary strong{color:#e9e8e6}
+:global(.theme-ember) .catalogSummary button{border:1px solid #2d2b28;background:rgb(255 250 244 / 0.04);color:#c6c3bf;border-radius:999px}
+:global(.theme-ember) .templateArtwork{background:linear-gradient(145deg,rgb(255 250 244 / 0.025),rgb(255 250 244 / 0.06));color:#e2e1df}
+:global(.theme-ember) .templateArtwork[data-variant="主图"]{background:linear-gradient(145deg,rgb(255 250 244 / 0.04),rgb(255 250 244 / 0.06));color:#ceccc8}
+:global(.theme-ember) .templateArtwork[data-variant="电商海报"]{background:linear-gradient(145deg,rgb(255 250 244 / 0.025),rgb(255 250 244 / 0.06));color:#dbd9d7}
+:global(.theme-ember) .templateArtwork>strong{font-weight:500}
+:global(.theme-ember) .card .cardBody h3{color:#e9e8e6}
+:global(.theme-ember) .card .cardFooter small{color:#918b83}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{background:#f1f0ef}
+:global(.theme-plaster) .composerControls .repositoryButton{background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .focusBrand :global(.brand-copy strong){font-weight:500}
+:global(.theme-plaster) .focusBrand :global(.brand-copy small){color:rgb(255 255 255 / 0.44)}
+:global(.theme-plaster) .focusNav{border-bottom:1px solid #e7e6e5;background:#ffffff}
+:global(.theme-plaster) .focusNavInner>strong{color:#1b1a19}
+:global(.theme-plaster) .focusNavInner nav a{color:#65635c}
+:global(.theme-plaster) .focusNavInner nav a:hover,:global(.theme-plaster) .focusNavInner nav a.navActive{color:#1b1a19}
+:global(.theme-plaster) .focusNavInner nav a.navActive::after{background:#1a1a19;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .navAccount{color:#1a1a19}
+:global(.theme-plaster) .hero{background:linear-gradient(110deg,#f2f2f1 0%,#ffffff 64%,#ebeae9 100%);color:#1b1a19}
+:global(.theme-plaster) .kicker{color:#1a1a19}
+:global(.theme-plaster) .hero h1 span{color:#1a1a19}
+:global(.theme-plaster) .hero p{color:#6b6860}
+:global(.theme-plaster) .command{border:1px solid #f0c4a7;background:#ffffff;box-shadow:0 12px 30px rgb(30 27 22 / 0.078);border-radius:20px}
+:global(.theme-plaster) .command input{color:#282724}
+:global(.theme-plaster) .command input::placeholder{color:#a19f97}
+:global(.theme-plaster) .command button{color:#ffffff;background:#1a1a19;border-radius:999px}
+:global(.theme-plaster) .heroMeta{color:#908d84}
+:global(.theme-plaster) .artCircle{border:1px solid rgb(26 26 25 / 0.4);box-shadow:0 0 0 34px rgb(30 27 22 / 0.047),0 0 0 68px rgb(30 27 22 / 0.031)}
+:global(.theme-plaster) .artLabel{color:#1a1a19}
+:global(.theme-plaster) .artLabel strong{color:#292825}
+:global(.theme-plaster) .eyebrow{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .filters{background:#ffffff;border-radius:20px}
+:global(.theme-plaster) .filterRow button:hover{background:#ebeae9;color:#1a1a19}
+:global(.theme-plaster) .filterRow button.active{color:#ffffff;background:#1a1a19;box-shadow:0 4px 10px rgb(30 27 22 / 0.2)}
+:global(.theme-plaster) .card{background:#ffffff;box-shadow:0 5px 18px rgb(30 27 22 / 0.035);border-radius:22px}
+:global(.theme-plaster) .card:hover{box-shadow:0 14px 30px rgb(30 27 22 / 0.082)}
+:global(.theme-plaster) .imageWrap{background:#e4e3e1}
+:global(.theme-plaster) .imageWrap>span{border:1px solid rgb(255 255 255 / 0.533);color:#ffffff;background:rgb(30 29 27 / 0.659);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .imageHover{background:rgb(27 26 25 / 0.502);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .imageHover button{border:1px solid rgb(255 255 255 / 0.533);color:#ffffff;background:rgb(35 34 32 / 0.8);border-radius:999px}
+:global(.theme-plaster) .cardTags span{color:#1a1a19;background:#ebeae9}
+:global(.theme-plaster) .cardFooter button{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .overlay{background:rgb(27 26 25 / 0.333);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .drawer{background:#ffffff;box-shadow:-15px 0 40px rgb(30 27 22 / 0.133)}
+:global(.theme-plaster) .lock{border:1px solid #ebeae9;background:#f3f2f2;border-radius:15px}
+:global(.theme-plaster) .lock strong{color:#1a1a19}
+:global(.theme-plaster) .drawer dd{font-weight:500}
+:global(.theme-plaster) .forbidden{color:#c84110;background:#ebeae9;border-radius:12px}
+:global(.theme-plaster) .primary,:global(.theme-plaster) .secondary{font-weight:500}
+:global(.theme-plaster) .primary{color:#ffffff;background:#1a1a19}
+:global(.theme-plaster) .secondary{background:#ffffff}
+:global(.theme-plaster) .manual{color:#1a1a19}
+:global(.theme-plaster) .page{background:#ffffff;color:#1b1a19}
+:global(.theme-plaster) .focusNav{background:#1b1a19;color:#ffffff}
+:global(.theme-plaster) .focusNavInner>strong{color:#ffffff;font-weight:400}
+:global(.theme-plaster) .focusNavInner nav a{color:#e9e8e7}
+:global(.theme-plaster) .focusNavInner nav a:hover,:global(.theme-plaster) .focusNavInner nav a.navActive{color:#1a1a19}
+:global(.theme-plaster) .focusNavInner nav a.navActive::after{background:#1a1a19}
+:global(.theme-plaster) .navRight>span{background:#ffffff;color:#44423d;border-radius:11px}
+:global(.theme-plaster) .navRight .navAccount{color:#ffffff;background:#1b1a19;border:1px solid #44423d;border-radius:11px}
+:global(.theme-plaster) .notice{background:#1a1a19;color:#ffffff}
+:global(.theme-plaster) .notice button{background:#ffffff;color:#54524c;border-radius:999px}
+:global(.theme-plaster) .hero{background:radial-gradient(circle at 82% 33%,#ebeae9 0,#ffffff 30%),#ffffff;color:#1b1a19}
+:global(.theme-plaster) .heroTitle svg{color:#1a1a19;fill:#1a1a19}
+:global(.theme-plaster) .command{border:1px solid #e2e1df;background:#ffffff;box-shadow:0 7px 26px rgb(30 27 22 / 0.063)}
+:global(.theme-plaster) .uploadBox{border:1px dashed #d7d6d2;color:#f0c8ac}
+:global(.theme-plaster) .command textarea{color:#33322e}
+:global(.theme-plaster) .command textarea::placeholder{color:#c1bfbb}
+:global(.theme-plaster) .commandBar button{border:1px solid #e9e8e7;background:#ffffff;color:#54524c;border-radius:999px}
+:global(.theme-plaster) .commandBar button:hover{border-color:#1a1a19}
+:global(.theme-plaster) .commandBar small{color:#97948c}
+:global(.theme-plaster) .commandBar .commandSubmit{color:#ffffff;background:#1a1a19}
+:global(.theme-plaster) .featureLinks button{color:#22211f}
+:global(.theme-plaster) .featureLinks button svg{color:#22211f;background:#ebeae9}
+:global(.theme-plaster) .featureLinks button:nth-child(2) svg{background:#f0f0ef}
+:global(.theme-plaster) .featureLinks button:nth-child(3) svg{background:#ebeae9}
+:global(.theme-plaster) .featureLinks button:nth-child(4) svg{background:#ebeae9}
+:global(.theme-plaster) .featureLinks button:nth-child(5) svg{background:#eeeeec}
+:global(.theme-plaster) .featureLinks em{background:#efeeed;color:#22211f;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .materialPanel{border:1px solid #ebeae9;background:#ffffff;box-shadow:0 10px 34px rgb(30 27 22 / 0.09)}
+:global(.theme-plaster) .materialTitle i{background:#d2d0cd}
+:global(.theme-plaster) .materialTitle span{color:#54524c}
+:global(.theme-plaster) .materialHeader p{color:#97948c}
+:global(.theme-plaster) .imageWrap{background:#e8e8e6}
+:global(.theme-plaster) .vipGate{color:#ffffff;background:#232220}
+:global(.theme-plaster) .vipGate:hover{background:#1a1a19}
+:global(.theme-plaster) .overlay{background:rgb(27 26 25 / 0.58)}
+:global(.theme-plaster) .focusModal{background:#ffffff;box-shadow:0 18px 60px rgb(30 27 22 / 0.467);border-radius:22px}
+:global(.theme-plaster) .focusModal .close{color:#65635c}
+:global(.theme-plaster) .modalGallery{background:#eeeeed}
+:global(.theme-plaster) .inputTile,:global(.theme-plaster) .resultTile{background:#e4e3e1;border-radius:14px}
+:global(.theme-plaster) .inputTile span,:global(.theme-plaster) .resultTile>span{background:#65635c;color:#ffffff;border-radius:8px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .resultTile img{background:#dbdad8}
+:global(.theme-plaster) .resultTile small{background:#ffffff;color:#65635c;border-radius:16px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .modalInfo>p{color:#65635c}
+:global(.theme-plaster) .modalMeta{color:#908d84}
+:global(.theme-plaster) .modalApply{color:#ffffff;background:#232220;border-radius:12px;font-weight:500}
+:global(.theme-plaster) .modalApply:hover{background:#1a1a19}
+:global(.theme-plaster) .emptyInput{color:#97948c;background:#e4e3e1;border-radius:14px}
+:global(.theme-plaster) .hero{background:#ffffff}
+:global(.theme-plaster) .materialPanel{box-shadow:0 12px 36px rgb(30 27 22 / 0.1)}
+:global(.theme-plaster) .filters{background:#ffffff}
+:global(.theme-plaster) .filterRow button.active{color:#ffffff;background:#2b2a27}
+:global(.theme-plaster) .card{background:#f0f0ee;border-radius:16px}
+:global(.theme-plaster) .card:hover{box-shadow:0 8px 18px rgb(30 27 22 / 0.078)}
+:global(.theme-plaster) .imageWrap{background:#e5e4e2}
+:global(.theme-plaster) .imageWrap>span{background:#54524c;color:#ffffff;border-radius:8px}
+:global(.theme-plaster) .imageHover{background:rgb(27 26 25 / 0.251)}
+:global(.theme-plaster) .cardBody{background:#ffffff}
+:global(.theme-plaster) .card h3{font-weight:500}
+:global(.theme-plaster) .inputTile img,:global(.theme-plaster) .resultTile img{background:#e4e3e1}
+:global(.theme-plaster) .imageWrap{background:#e5e4e2}
+:global(.theme-plaster) .imageWrap img{background:#e5e4e2}
+:global(.theme-plaster) .inputTile img,:global(.theme-plaster) .resultTile img{background:#e4e3e1}
+:global(.theme-plaster) .hero{background:radial-gradient(circle at 82% 33%,#ebeae9 0,#ffffff 30%),#ffffff}
+:global(.theme-plaster) .heroTitle h1{background:linear-gradient(100deg,#1b1a19 0%,#5d5b55 26%,#1a1a19 49%,#262522 72%,#1a1a19 100%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text}
+:global(.theme-plaster) .heroTitle svg{color:#1a1a19;fill:#1a1a19;stroke:#1a1a19}
+:global(.theme-plaster) .command{border:1px solid #e3e2e0;box-shadow:0 8px 28px rgb(30 27 22 / 0.051)}
+:global(.theme-plaster) .uploadBox{color:#efc3a6}
+:global(.theme-plaster) .composerAssetTile,:global(.theme-plaster) .composerAddTile{border:1px solid #d8d7d3;background:#f3f3f2;border-radius:9px}
+:global(.theme-plaster) .composerAssetTile>span{color:#ffffff;background:rgb(27 26 25 / 0.6);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .assetReplaceButton{color:#ffffff;background:rgb(27 26 25 / 0.6);border-radius:999px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .assetRemoveButton{color:#ffffff;background:rgb(27 26 25 / 0.6);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .aspectPicker{border:1px solid #e5e4e2;color:#54524c}
+:global(.theme-plaster) .aspectPicker select{color:#54524c}
+:global(.theme-plaster) .aspectPicker select:disabled{color:#97948c}
+:global(.theme-plaster) .composerAssetTile span{color:#ffffff;background:rgb(27 26 25 / 0.6);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .resultAssetTile{border-color:#ec5119;background:#f3f2f1;box-shadow:0 5px 16px rgb(30 27 22 / 0.169)}
+:global(.theme-plaster) .resultAssetTile img{background:#f3f2f1}
+:global(.theme-plaster) .resultAssetTile span{background:rgb(26 26 25 / 0.925);font-weight:500}
+:global(.theme-plaster) .resultPreviewOverlay{background:rgb(27 26 25 / 0.78);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .resultPreviewOverlay img{background:#ffffff;box-shadow:0 24px 80px rgb(30 27 22 / 0.6);border-radius:16px}
+:global(.theme-plaster) .resultPreviewClose{border:1px solid rgb(255 255 255 / 0.4);color:#ffffff;background:rgb(27 26 25 / 0.4);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .resultShowcase{border:1px solid #f0c6aa;background:linear-gradient(110deg,#f3f2f1,#ffffff);box-shadow:0 9px 24px rgb(30 27 22 / 0.094);border-radius:22px}
+:global(.theme-plaster) .resultShowcaseMeta{color:#242321}
+:global(.theme-plaster) .resultShowcaseMeta span{color:#1a1a19}
+:global(.theme-plaster) .resultShowcase img{background:#efefed;border-radius:11px}
+:global(.theme-plaster) .composerAddTile{color:#eebf9f;background:#ffffff}
+:global(.theme-plaster) .commandBar button{border-color:#e5e4e2;color:#54524c;background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .commandBar button:first-child{color:#44423d}
+:global(.theme-plaster) .commandBar .commandSubmit{color:#d7d6d2;background:#1b1a19}
+:global(.theme-plaster) .composerGenerating .composerAssetTile::after{border:3px solid rgb(255 255 255 / 0.533);border-top-color:#ffffff;filter:drop-shadow(0 1px 3px rgb(30 27 22 / 0.533))}
+:global(.theme-plaster) .generationStatus{color:#76736b}
+:global(.theme-plaster) .generationStatus b{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .composeError{color:#d24511}
+:global(.theme-plaster) .modalInfo>.modalApply:not(:last-child){border:1px solid #d6d4d1;color:#54524c;background:#ffffff;border-radius:9px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3);font-weight:500}
+:global(.theme-plaster) .modalInfo>.modalApply:not(:last-child):hover{color:#232220;background:#f0f0ee}
+:global(.theme-plaster) .page{background:#ffffff}
+:global(.theme-plaster) .focusNav{background:#1b1a19;color:#ffffff}
+:global(.theme-plaster) .focusNavInner>strong{color:#ffffff}
+:global(.theme-plaster) .focusNavInner nav a{color:#ffffff}
+:global(.theme-plaster) .focusNavInner nav a.navActive{color:#e0dfdd}
+:global(.theme-plaster) .focusNavInner nav a.navActive::after{background:#e0dfdd}
+:global(.theme-plaster) .focusNotice{background:#eaeae8;color:#232220}
+:global(.theme-plaster) .focusNotice button{color:#54524c;background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .hero{background:#ffffff}
+:global(.theme-plaster) .heroTitle h1{background:linear-gradient(100deg,#1b1a19 0%,#b63b0f 28%,#1a1a19 50%,#2c2b28 72%,#1a1a19 100%);background-size:220% 100%;-webkit-background-clip:text;background-clip:text;font-weight:400}
+:global(.theme-plaster) .focusCrescent{background:#d9d8d6;box-shadow:inset 9px 0 0 #ffffff}
+:global(.theme-plaster) .command{border:1px solid #e1e0de;background:#ffffff;box-shadow:0 8px 24px rgb(30 27 22 / 0.051)}
+:global(.theme-plaster) .uploadBox{color:#f3d1ba}
+:global(.theme-plaster) .composerAssetTile,:global(.theme-plaster) .composerAddTile{border:1px solid #d8d7d3}
+:global(.theme-plaster) .composerAddTile{color:#f3d1ba;background:#ffffff}
+:global(.theme-plaster) .command textarea,:global(.theme-plaster) .command:not(.commandWithAssets) textarea{color:#22211f}
+:global(.theme-plaster) .commandBar button,:global(.theme-plaster) .aspectTrigger{border:1px solid #e4e3e1;color:#54524c;background:#ffffff}
+:global(.theme-plaster) .commandBar button:hover,:global(.theme-plaster) .aspectTrigger:hover{border-color:#d2d1cd;background:#f3f3f2}
+:global(.theme-plaster) .aspectMenu{background:#ffffff;box-shadow:0 8px 24px rgb(30 27 22 / 0.133);color:#98958d;border-radius:9px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .aspectGrid button{border:1px solid #e8e8e6;color:#54524c;background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .aspectGrid button:hover,:global(.theme-plaster) .aspectGrid button.aspectSelected{border-color:#f7e1d2;background:#f6f5f5}
+:global(.theme-plaster) .modelButton{background:#f5f5f4!important;border-color:#e7e6e4!important}
+:global(.theme-plaster) .commandBar small{color:#97948c}
+:global(.theme-plaster) .commandBar .commandSubmit{color:#e1e0dd;background:#1b1a19}
+:global(.theme-plaster) .countMenu{border:1px solid #e9e8e7;background:#ffffff;box-shadow:0 8px 24px rgb(30 27 22 / 0.133);border-radius:12px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .countMenu button:hover,:global(.theme-plaster) .countMenu button.countSelected{background:#ebeae9!important;color:#ab5c0e!important}
+:global(.theme-plaster) .featureLinks button{color:#1b1a19}
+:global(.theme-plaster) .featureLinks button svg{background:#efefed}
+:global(.theme-plaster) .featureLinks button:first-child svg{background:#eeedec}
+:global(.theme-plaster) .featureLinks button:nth-child(2) svg{background:#efeeed}
+:global(.theme-plaster) .featureLinks button:nth-child(3) svg{background:#ededec}
+:global(.theme-plaster) .featureLinks button:nth-child(4) svg{background:#ebeae9}
+:global(.theme-plaster) .featureLinks button:nth-child(5) svg{background:#eeeeec}
+:global(.theme-plaster) .featureLinks button em{color:#1a1a19;background:#edeceb;border-radius:8px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .command .assetRemoveButton{border:2px solid #ffffff;color:#76736b;background:#a7a49d}
+:global(.theme-plaster) .repositoryOverlay{background:rgb(27 26 25 / 0.52);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .repositoryModal{background:#ffffff;box-shadow:0 20px 70px rgb(30 27 22 / 0.333);border-radius:14px}
+:global(.theme-plaster) .repositoryClose{color:#87847a;border-radius:9px}
+:global(.theme-plaster) .repositoryClose:hover{background:#ededec;color:#33322e}
+:global(.theme-plaster) .repositoryTile{background:#ecebea;border-radius:8px}
+:global(.theme-plaster) .repositoryTile:hover{border-color:#f4d5c0}
+:global(.theme-plaster) .repositoryTile[data-selected="true"]{border-color:#f0c5a8;box-shadow:0 0 0 2px #ffffff}
+:global(.theme-plaster) .repositoryCheck{color:#ffffff;background:#f0c5a8;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3);font-weight:500}
+:global(.theme-plaster) .repositoryState{color:#97948c}
+:global(.theme-plaster) .repositoryPager{color:#54524c}
+:global(.theme-plaster) .repositoryPager button{color:#54524c;background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .repositoryPager button:hover:not(:disabled),:global(.theme-plaster) .repositoryPager button.repositoryPageSelected{border:1px solid #f0c5a8;color:#be670f;background:#ebeae9}
+:global(.theme-plaster) .repositoryPager button:disabled{color:#c7c5c1}
+:global(.theme-plaster) .repositoryPager span{color:#97948c}
+:global(.theme-plaster) .repositoryActions button{border:1px solid #d7d6d2;color:#65635c;background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .repositoryActions .repositoryConfirm{border-color:#f2ceb6;color:#97510c;background:#f6dccb}
+:global(.theme-plaster) .aspectMenu button:hover,:global(.theme-plaster) .aspectMenu button.aspectSelected,:global(.theme-plaster) .countMenu button:hover,:global(.theme-plaster) .countMenu button.countSelected{border-color:#1a1a19!important;background:#ebeae9!important;color:#1a1a19!important}
+:global(.theme-plaster) .repositoryTile:hover,:global(.theme-plaster) .repositoryTile[data-selected="true"]{border-color:#1a1a19;box-shadow:0 0 0 2px #ffffff}
+:global(.theme-plaster) .repositoryCheck{background:#1a1a19}
+:global(.theme-plaster) .repositoryPager button:hover:not(:disabled),:global(.theme-plaster) .repositoryPager button.repositoryPageSelected{border-color:#1a1a19;color:#1a1a19;background:#ebeae9}
+:global(.theme-plaster) .repositoryActions .repositoryConfirm{border-color:#1a1a19;background:#1a1a19;color:#ffffff}
+:global(.theme-plaster) .resultShowcaseGrid button{background:#efefed;border-radius:999px}
+:global(.theme-plaster) .resultShowcaseGrid img{background:#efefed;border-radius:11px}
+:global(.theme-plaster) .hero{background:radial-gradient(ellipse 430px 310px at 91% 22%,#ebeae9 0%,#f4f4f3 42%,transparent 74%),
+    #ffffff}
+:global(.theme-plaster) .hero::after{background:radial-gradient(ellipse at 38% 45%,#ebeae9 0%,#ebeae9 42%,transparent 72%);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .composerAssetTile > p[role="alert"]{border:1px solid #e9e8e7;background:#ffffff;box-shadow:0 4px 12px rgb(30 27 22 / 0.133);border-radius:8px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .command .composerAddTile{color:#1a1a19;background:#eeedec;border-radius:9px}
+:global(.theme-plaster) .command .assetReplaceButton{color:#ffffff;background:rgb(27 26 25 / 0.6);border-radius:999px}
+:global(.theme-plaster) .page{color:#292825}
+:global(.theme-plaster) .hero{color:#292825}
+:global(.theme-plaster) .heroTitle svg{color:#1a1a19}
+:global(.theme-plaster) .heroTitle h1{color:#242321}
+:global(.theme-plaster) .discoverySteps{color:#89867d}
+:global(.theme-plaster) .discoverySteps > span{color:#b4b3ad}
+:global(.theme-plaster) .discoverySteps a{color:#56544e;border-bottom:1px solid #bebdb8}
+:global(.theme-plaster) .materialPanel{border-color:#e1e0de;box-shadow:0 7px 27px rgb(30 27 22 / 0.031)}
+:global(.theme-plaster) .eyebrow{color:#726f67}
+:global(.theme-plaster) .filterRow button:hover{color:#242321;background:#e9e9e7}
+:global(.theme-plaster) .filterRow button.active{color:#242321;background:#eae9e7;border-color:#d4d3d0}
+:global(.theme-plaster) .card{border-color:#e0e0dd}
+:global(.theme-plaster) .card:hover{border-color:#b9cba1;box-shadow:0 10px 24px rgb(30 27 22 / 0.078)}
+:global(.theme-plaster) .cardFooter button{color:#1a1a19;background:#eae9e8}
+:global(.theme-plaster) .cardFooter button:hover{color:#242321;background:#eae9e7}
+:global(.theme-plaster) .catalogEmpty{border:1px dashed #d6d5d2;color:#9e9b93;background:#f5f5f4;border-radius:14px}
+:global(.theme-plaster) .catalogEmpty strong{color:#585650}
+:global(.theme-plaster) .catalogEmpty button,:global(.theme-plaster) .catalogEmpty a{border:1px solid #d0cfcb;background:#efefee;color:#34332f}
+:global(.theme-plaster) .caseImportRetry{border:1px solid #cfcdca;background:#ffffff;color:#373632;border-radius:11px;font-weight:500}
+:global(.theme-plaster) .caseImportRetry:hover:not(:disabled){border-color:#1a1a19;background:#f3f3f2}
+:global(.theme-plaster) .catalogSummary{border-bottom:1px solid #e3e2e0;color:#6b6861}
+:global(.theme-plaster) .catalogSummary strong{color:#242321}
+:global(.theme-plaster) .catalogSummary button{border:1px solid #d5d4d1;background:#ffffff;color:#4d4b45;border-radius:999px}
+:global(.theme-plaster) .templateArtwork{background:linear-gradient(145deg,#ebebe9,#e1e0de);color:#393833}
+:global(.theme-plaster) .templateArtwork[data-variant="主图"]{background:linear-gradient(145deg,#ffffff,#e6e6e4);color:#474540}
+:global(.theme-plaster) .templateArtwork[data-variant="电商海报"]{background:linear-gradient(145deg,#efefee,#e2e1df);color:#3e3c38}
+:global(.theme-plaster) .templateArtwork>strong{font-weight:500}
+:global(.theme-plaster) .card .cardBody h3{color:#32302d}
+:global(.theme-plaster) .card .cardFooter small{color:#76736a}
+:global(.theme-plaster) .loginGate{border:1px solid #292825;background:rgb(244 244 243 / 0.025);border-radius:14px}
+:global(.theme-plaster) .loginGate strong{color:#e6e5e3;font-weight:500}
+:global(.theme-plaster) .loginGate span{color:#8a877e}
+:global(.theme-plaster) .loginGate[data-prompted]{border-color:#b23a0e}
+:global(.theme-plaster) .loginGateButton{background:#e6e5e3;color:#1b1a19;border-radius:999px;font-weight:500}
+:global(.theme-plaster) .loginGateButton:hover{background:#ec5119;color:#1b1a19}
+:global(html.theme-plaster) .hero{background:radial-gradient(40% 70% at 80% 30%,rgb(236 81 25 / 0.06),transparent 70%),transparent}
+:global(html.theme-plaster) .composerControls .repositoryButton{color:#1b1a19;border-color:rgb(28 28 26 / 0.14)}
+/* plaster:end */

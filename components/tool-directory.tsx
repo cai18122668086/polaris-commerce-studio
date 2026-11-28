@@ -7,7 +7,8 @@ import { ArrowRight, Check, Flame, Search, Sparkles, type LucideIcon } from "luc
 
 import { HomeAiToolbox } from "@/components/home-ai-toolbox";
 import { WelcomeCreditsBanner } from "@/components/welcome-credits";
-import { HomeHero, HomeHomeFooter, HomeHomeReveal, HomeProductShowcase, HomeCreativeVoices, HomeReplicaCardArt } from "@/components/home-showcase";
+import { HomeHomeReveal, HomeReplicaCardArt } from "@/components/home-showcase";
+import { EmberCases, EmberCompare, EmberFaq, EmberFeatures, EmberFinal, EmberHero, EmberPricing, EmberSeam, EmberStory } from "@/components/ember-landing";
 import {
   resolveRuntimeCapability,
   useRuntimeStatus,
@@ -23,6 +24,7 @@ import { CreationStartHub } from "@/components/creation-start-hub";
 import { CommerceEntryGroups } from "@/components/commerce-entry-groups";
 import { FeatureCaseArt } from "./feature-case-art";
 import { getFeatureCaseArt } from "@/lib/feature-case-art";
+import { withBasePath } from "@/lib/base-path";
 
 const FEATURE_PRESENTATION_OVERRIDES: Record<
   string,
@@ -125,10 +127,10 @@ function FeatureVisualImage({
 }) {
   return (
     <picture className={className}>
-      <source media="(max-width: 720px)" srcSet={image.mobile.src} />
-      <source media="(max-width: 1199px)" srcSet={image.tablet.src} />
+      <source media="(max-width: 720px)" srcSet={withBasePath(image.mobile.src)} />
+      <source media="(max-width: 1199px)" srcSet={withBasePath(image.tablet.src)} />
       <img
-        src={image.desktop.src}
+        src={withBasePath(image.desktop.src)}
         width={image.desktop.width}
         height={image.desktop.height}
         className="home-feature-card__picture-image"
@@ -289,13 +291,19 @@ export function ToolDirectory() {
   return (
     <section className="focus-home">
       <WelcomeCreditsBanner />
-      <HomeHero />
+      {/* 首屏与展示区：熔光落地页（2026-11-22）。功能入口、工具目录和 AI 工具箱保持原样 */}
+      <EmberHero />
       <CreationStartHub />
       <CommerceEntryGroups />
+      <EmberStory />
+      <EmberSeam />
+      <EmberCompare />
+      <EmberSeam />
+      <EmberFeatures />
 
       <div className="focus-home__content">
         <div className="home-command home-command--primary" id="tools">
-          <span className="commerce-eyebrow">FIND YOUR CREATIVE TOOL</span>
+          <span className="commerce-eyebrow">找到合适的创作工具</span>
           <h2>更多创作能力，都在这里。</h2>
           <p>
             {FEATURE_REGISTRY.length} 项创作功能，搜索你的需求，或直接选下面的工具
@@ -530,9 +538,11 @@ export function ToolDirectory() {
 
         <HomeAiToolbox />
       </div>
-      <HomeProductShowcase />
-      <HomeCreativeVoices />
-      <HomeHomeFooter />
+      <EmberSeam />
+      <EmberCases />
+      <EmberPricing />
+      <EmberFaq />
+      <EmberFinal />
       <HomeHomeReveal />
     </section>
   );

@@ -73,7 +73,7 @@ class EditingMusicOptions(StrictVideoModel):
 
 
 class NativeRenderEdits(StrictVideoModel):
-    music: Literal["lower", "off"] | None = None
+    music: Literal["lower", "raise", "off"] | None = None
     music_track_id: str | None = Field(
         default=None,
         pattern=r"^bgm-[0-9a-f]{16}$",
@@ -81,6 +81,11 @@ class NativeRenderEdits(StrictVideoModel):
     )
     source_only_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
         Field(default_factory=list, max_length=120)
+    )
+    # 只关掉这些段的画面音效，动效、字幕、口播和配乐保留；
+    # 为空时不序列化，旧记录的摘要不变。
+    sound_muted_beat_ids: list[Annotated[str, Field(min_length=1, max_length=120)]] = (
+        Field(default_factory=list, max_length=120, exclude_if=lambda value: not value)
     )
 
     highlight_edits: list[NativeHighlightEdit] = Field(
@@ -100,6 +105,7 @@ class NativeRenderEdits(StrictVideoModel):
             not self.music
             and not self.music_track_id
             and not self.source_only_beat_ids
+            and not self.sound_muted_beat_ids
             and not self.highlight_edits
             and not self.image_edits
             and not self.effect_edits
@@ -109,6 +115,12 @@ class NativeRenderEdits(StrictVideoModel):
             raise ValueError("A replacement track requires background music to be on")
         if len(set(self.source_only_beat_ids)) != len(self.source_only_beat_ids):
             raise ValueError("Select each segment at most once")
+        if len(set(self.sound_muted_beat_ids)) != len(
+            self.sound_muted_beat_ids
+        ) or set(self.sound_muted_beat_ids).intersection(self.source_only_beat_ids):
+            raise ValueError(
+                "Mute each segment once; source-only segments are already silent"
+            )
         keys = {(edit.beat_id, edit.path) for edit in self.highlight_edits}
         if len(keys) != len(self.highlight_edits) or any(
             beat_id in self.source_only_beat_ids for beat_id, _ in keys
@@ -127,6 +139,7 @@ class NativeRenderEdits(StrictVideoModel):
         ):
             raise ValueError("Choose one replacement effect on an active text segment")
         self.source_only_beat_ids = sorted(self.source_only_beat_ids)
+        self.sound_muted_beat_ids = sorted(self.sound_muted_beat_ids)
         self.highlight_edits.sort(key=lambda edit: (edit.beat_id, edit.path))
         self.image_edits.sort(key=lambda edit: (edit.beat_id, edit.path))
         self.effect_edits.sort(key=lambda edit: edit.beat_id)
@@ -366,6 +379,20 @@ class EditingWorksResponse(StrictVideoModel):
     next_before: str | None
 
 
+class EditingActiveWorkResponse(StrictVideoModel):
+    kind: Literal["planning", "editing"]
+    task_id: str
+    project_id: str
+    project_title: str
+    status: Literal["queued", "running", "prepared", "awaiting_review", "failed"]
+    created_at: datetime
+    preview: EditingArtifactResponse | None
+
+
+class EditingActiveWorksResponse(StrictVideoModel):
+    items: list[EditingActiveWorkResponse]
+
+
 class EditingTemplateSample(StrictVideoModel):
     template_id: str
     task_id: str
@@ -474,6 +501,10 @@ class EditingTaskResponse(StrictVideoModel):
     carried_revision: EditingCarriedRevision | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    # 1-based place among queued editing tasks (all users), only while queued.
+    queue_position: int | None = Field(
+        default=None, ge=1, exclude_if=lambda value: value is None
+    )
 
 
 class EditingTranscriptRevisionCreate(StrictVideoModel):
@@ -574,6 +605,7 @@ class EditingNativeBeatResponse(StrictVideoModel):
     text: str
     reason: str
     source_only_available: bool
+    sound_mute_available: bool = False
     dependency_blocker: str | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
@@ -634,6 +666,18 @@ class EditingNativePlanResponse(StrictVideoModel):
     created_at: datetime
 
 
+class EditingSupplementMg(StrictVideoModel):
+    style: Literal["paper", "ink", "ember"] = "paper"
+
+
+class EditingSupplementOptions(StrictVideoModel):
+    """Frozen supplement choices (C5). Absent = no MG; old requests unchanged."""
+
+    mg: EditingSupplementMg | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+
+
 class EditingPlanningTaskCreate(StrictVideoModel):
     request_id: UUID
     mode: Literal["prepare", "generate"] = "prepare"
@@ -648,7 +692,7 @@ class EditingPlanningTaskCreate(StrictVideoModel):
         max_length=64,
         exclude_if=lambda value: value is None,
     )
-    music: Literal["template", "lower", "off"] | None = Field(
+    music: Literal["template", "lower", "raise", "off"] | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
         description=(
@@ -659,10 +703,26 @@ class EditingPlanningTaskCreate(StrictVideoModel):
     creative_options: EditingAppleCreativeOptions | None = Field(
         default=None, exclude_if=lambda value: value is None
     )
+    supplement: EditingSupplementOptions | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
+    replan: bool = Field(
+        default=False,
+        exclude_if=lambda value: not value,
+        description=(
+            "Explicitly pay for a new planning of a request that already has a "
+            "live or finished planning (the user confirmed the extra charge)."
+        ),
+    )
 
     @model_validator(mode="after")
     def prepared_execution(self) -> Self:
         from .bihuo_suite.registry import is_template as bihuo_template
+
+        if self.supplement is not None and (
+            self.mode != "prepare" or not bihuo_template(self.template_id)
+        ):
+            raise ValueError("Supplement MG requires a full-suite template preparation")
 
         if self.creative_options is not None and (
             self.mode != "prepare"
@@ -775,6 +835,11 @@ class EditingMaterialResponse(StrictVideoModel):
     source_asset_id: str | None
     feedback_observation: EditingFeedbackObservation | None = None
     url: str
+    # W4 补充素材：来源（stock | ai_generated；上传为空）与公开的来源授权信息。
+    origin: str | None = Field(default=None, exclude_if=lambda value: value is None)
+    provenance: dict[str, Any] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
 
 
 class EditingMaterialsResponse(StrictVideoModel):

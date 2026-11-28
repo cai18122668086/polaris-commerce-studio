@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator
+from typing import Any
 
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -46,6 +47,18 @@ def build_database(
         expire_on_commit=False,
     )
     return engine, session_factory
+
+
+def build_database_for(settings: Any) -> tuple[Engine, sessionmaker[Session]]:
+    """Engine sized by the POLARIS_DATABASE_POOL_* settings of this process."""
+
+    return build_database(
+        settings.database_url,
+        pool_size=settings.database_pool_size,
+        max_overflow=settings.database_max_overflow,
+        pool_timeout=settings.database_pool_timeout_seconds,
+        pool_recycle=settings.database_pool_recycle_seconds,
+    )
 
 
 def get_session(request: HTTPConnection) -> Iterator[Session]:

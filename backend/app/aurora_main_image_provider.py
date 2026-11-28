@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import logging
 import re
+import unicodedata
 from collections.abc import Mapping, Sequence
 from io import BytesIO
 from pathlib import Path
@@ -15,6 +17,7 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from . import label_fidelity
 from .aurora_execution_modes import (
     is_calibrated_parallel_aurora_mode,
     is_parallel_aurora_mode,
@@ -85,23 +88,54 @@ attestation only after all semantic checks pass. Do not invent image paths or
 hashes for those runtime-owned fields. decision_summary must be a concrete
 direct-pixel verdict sentence of at least 12 characters; never return a
 one-word verdict such as PASS, 合格 or 通过.
-The audit contract includes an authorized_fact_pool. Treat only those user
-entered strings, plus faithful non-strengthening paraphrases, as claim
-authority. Before deciding factual_copy_match or no_unsupported_claim,
-transcribe every visible headline, badge, number, comparison, feature label,
-rating, safety statement, and specification from the candidate pixels. Any
-proposition absent from that pool is an unsupported claim even when it is
+The audit contract includes an authorized_fact_pool and a copy_policy; the
+copy_policy is the same rule the image generator was given. Text printed on
+the product itself (label, package) is identity copy: judge it only under
+product_identity_match, character by character against the references, and
+never as an unsupported claim. Text outside the product (headlines, badges,
+banners, spec boxes) may use only the authorized_fact_pool strings, faithful
+non-strengthening paraphrases of them, and the product name in
+authorized_identity_copy. The pool already includes the clearly readable copy
+of the user's own source images (packaging and promotional text), which the
+original Skill treats as user facts. Before deciding factual_copy_match or
+no_unsupported_claim, transcribe every visible off-product headline, badge,
+number, comparison, feature label, rating, safety statement, and
+specification from the candidate pixels. Any off-product proposition absent
+from that pool is a model-invented, unsupported claim even when it is
 plausible for the category; return a material failure with the exact visible
 wording and the required change to remove or replace it.
 For product_identity_match, compare the candidate against every supplied
 product_reference image as one complementary identity set. Fail materially
-when the candidate changes silhouette, proportions, wheel count or placement,
-seat count, red/black color partition, steering wheel, dashboard/music panel,
-grille, headlights, doors, steps, mirrors, labels, or component relationships.
+when the candidate changes silhouette, proportions, component count or
+placement, color partitions, materials, closures or fittings, logos, labels,
+or component relationships. Read every legible word on the product's own
+label, packaging and logo and compare it character by character with the
+references; a changed, missing or extra character on the product is an
+identity failure.
 User facts may authorize copy, but they never authorize a new visible part or
 variant component that the product references do not show. An identity failure
 must recommend rebuilding from the original product references, never polishing
 the failed candidate as a repair canvas.
+""".strip()
+
+_SET_AUDIT_SYSTEM_PROMPT = """
+You are the blind six-page set-role reviewer for the Aurora domestic
+e-commerce six-image Skill. The attached images are the six accepted pages in
+page order 0-5. Decide from pixels only whether page 0 alone reads as the
+search listing cover and whether any page 1-5 could be confused with it.
+Everything you need is in the supplied set_audit_contract, including the
+exact image hashes to copy; never report missing inputs. Return one JSON
+object with exactly the fields listed in the contract.
+""".strip()
+
+_REPAIR_CHECK_SYSTEM_PROMPT = """
+You are the post-repair product identity checker for the Aurora domestic
+e-commerce six-image Skill. Compare only the product itself in two drafts of
+one page against the original product references: the label and package
+text, character by character, and the product's silhouette, proportions,
+colour partitions and components. Ignore every headline, badge, banner or
+other text that is not printed on the product. Return the JSON fields of the
+supplied schema only.
 """.strip()
 
 _STYLE_CALIBRATION_SYSTEM_PROMPT = """
@@ -152,12 +186,136 @@ class AuroraMainImageProvider:
             else "aurora-v0.1.17"
         )
         self.work_root = (work_root or default_aurora_work_root()).resolve()
+        # Blind char-exact label reads (see app.label_fidelity).  The offline
+        # gateway keeps its historical call counts.
+        self.label_gate_enabled = (
+            is_v20_aurora_mode(execution_mode)
+            and gateway.provider_name != "mock"
+            and label_fidelity.gate_enabled()
+        )
+        self._label_gate = label_fidelity.LabelFidelityGate(
+            gateway, cache_root=self.work_root
+        )
+
+    async def _label_verdict(
+        self,
+        request: ProviderRequest,
+        generation_request: Mapping[str, Any],
+        artifact: ProviderArtifact,
+        account: label_fidelity.GateAccount,
+        verdicts: dict[str, tuple[label_fidelity.LabelVerdict, dict[str, Any] | None]],
+    ) -> label_fidelity.LabelVerdict | None:
+        """Blind label read of one candidate, compared in code (never raises)."""
+
+        if not self.label_gate_enabled:
+            return None
+        if artifact.sha256 in verdicts:
+            return verdicts[artifact.sha256][0]
+        try:
+            references = _label_reference_sources(generation_request, request.job_id)
+            lines = await self._label_gate.reference_lines(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                idempotency_key=request.job_id,
+                references=references,
+                account=account,
+            )
+            if not lines:
+                return None
+            verdict, reading = await self._label_gate.check(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                idempotency_key=request.idempotency_key,
+                payload=artifact.payload,
+                reference_lines=lines,
+                account=account,
+            )
+        except Exception as exc:  # the gate never fails a paid page
+            logger.warning(
+                "Aurora label gate skipped job=%s (%s)",
+                request.job_id,
+                type(exc).__name__,
+            )
+            return None
+        verdicts[artifact.sha256] = (verdict, reading)
+        return verdict
+
+    async def _source_image_copy(
+        self,
+        request: ProviderRequest,
+        generation_request: Mapping[str, Any],
+        account: label_fidelity.GateAccount,
+    ) -> list[str]:
+        """Clearly readable text on the user's source image (label and poster).
+
+        One blind read per job, cached in the job workspace.  Lines with an
+        unreadable character are dropped: obscured text is never guessed.
+        """
+
+        if not self.label_gate_enabled:
+            return []
+        try:
+            references = _label_reference_sources(generation_request, request.job_id)
+            reference = next((item for item in references if item.payload), None)
+            if reference is None:
+                return []
+            cache = self._workspace(request.job_id) / "source-image-copy.json"
+            with contextlib.suppress(OSError, ValueError):
+                cached = json.loads(cache.read_text(encoding="utf-8"))
+                if cached.get("reference_sha256") == reference.sha256:
+                    return [str(line) for line in cached.get("lines", [])]
+            label_lines = await self._label_gate.reference_lines(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                idempotency_key=request.job_id,
+                references=references,
+                account=account,
+            )
+            _, reading = await self._label_gate.check(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                idempotency_key=f"{request.job_id}:poster-text",
+                payload=reference.payload,
+                reference_lines=label_lines or (),
+                account=account,
+            )
+            if reading is None:
+                return []
+            lines = [
+                line.strip()
+                for line in [
+                    *(label_lines or ()),
+                    *(str(item) for item in reading.get("other_text_lines", [])),
+                ]
+                if line.strip() and "?" not in line and "？" not in line
+            ]
+            lines = list(dict.fromkeys(lines))
+            write_contract(
+                cache, {"reference_sha256": reference.sha256, "lines": lines}
+            )
+            return lines
+        except Exception as exc:  # never fail a paid page on this read
+            logger.warning(
+                "Aurora source copy read skipped job=%s (%s)",
+                request.job_id,
+                type(exc).__name__,
+            )
+            return []
 
     async def execute(self, request: ProviderRequest) -> ProviderResult:
         if is_parallel_aurora_mode(self.execution_mode) or _request_uses_parallel_v20(
             request
         ):
             return await self._execute_parallel_v20(request)
+        # Calls made for this page so far; a failed page still reports them.
+        generation_requests = 0
+        audit_usage: list[dict[str, Any]] = []
+        label_account = label_fidelity.GateAccount()
+        label_verdicts: dict[
+            str, tuple[label_fidelity.LabelVerdict, dict[str, Any] | None]
+        ] = {}
+        label_repair_requested = False
+        copy_authority: tuple[str, ...] = ()
         try:
             item, harness_session = self._load_authorized_context(request)
             page_index = item.ordinal
@@ -166,8 +324,8 @@ class AuroraMainImageProvider:
             write_contract(session_path, harness_session)
             artifact: ProviderArtifact | None = None
             generation_usage: dict[str, Any] = {}
-            audit_usage: list[dict[str, Any]] = []
             actual_cost = 0
+            pre_repair: tuple[Path, ProviderArtifact] | None = None
 
             for attempt_index in range(2):
                 generation_request_path = workspace / (
@@ -190,6 +348,29 @@ class AuroraMainImageProvider:
                     job_settings = _mapping(job_configuration.get("settings"))
                     generation_request["authorized_facts"] = (
                         _normalize_commercial_fact_pool(job_settings)
+                    )
+                    # The original Skill treats clearly readable copy in the
+                    # user's own same-product images as user facts: add the
+                    # blind-read source transcription to the fact pool.
+                    source_copy = await self._source_image_copy(
+                        request, generation_request, label_account
+                    )
+                    generation_request["authorized_facts"] = _with_source_copy(
+                        generation_request["authorized_facts"], source_copy
+                    )
+                    # Without any user fact (legacy or offline jobs) there is
+                    # nothing to judge invented copy against.
+                    copy_authority = (
+                        _copy_authority(
+                            generation_request["authorized_facts"], job_settings
+                        )
+                        if any(
+                            _copy_authority(
+                                _normalize_commercial_fact_pool(job_settings),
+                                job_settings,
+                            )
+                        )
+                        else ()
                     )
                     write_contract(generation_request_path, generation_request)
                 sources = _generation_sources(generation_request, request.job_id)
@@ -215,6 +396,7 @@ class AuroraMainImageProvider:
                 )
                 generation_usage = dict(image_result.raw_usage or {})
                 actual_cost += int(image_result.actual_cost_micros or 0)
+                generation_requests += _image_network_requests(generation_usage)
                 if (
                     image_result.outcome != ProviderOutcome.SUCCEEDED
                     or image_result.artifact is None
@@ -255,13 +437,92 @@ class AuroraMainImageProvider:
                     },
                 )
                 current = _load_json(session_path)
-                if is_v20_aurora_mode(self.execution_mode):
-                    judgment, usage, cost = await self._audit_v20_candidate_with_retry(
-                        request,
-                        generation_request,
-                        generated_path,
-                        artifact,
+                if (
+                    is_v20_aurora_mode(self.execution_mode)
+                    and attempt_index == 1
+                    and pre_repair is not None
+                    and (page_index != 0 or current.get("search_calibrated") is True)
+                ):
+                    # A repaired page is delivered whatever a full re-audit
+                    # says, so only check what can still change the outcome:
+                    # did the repair damage the product label or identity?
+                    # The label verdicts come from blind reads compared in
+                    # code; the model check keeps the identity judgment.
+                    checked, _ = await asyncio.gather(
+                        self._check_repair_identity(
+                            request,
+                            generation_request,
+                            pre_repair,
+                            (generated_path, artifact),
+                        ),
+                        self._label_verdict(
+                            request,
+                            generation_request,
+                            artifact,
+                            label_account,
+                            label_verdicts,
+                        ),
                     )
+                    if checked is not None:
+                        check, usage, cost = checked
+                        _apply_label_verdicts(
+                            check,
+                            label_verdicts.get(pre_repair[1].sha256),
+                            label_verdicts.get(artifact.sha256),
+                        )
+                        _apply_offfact_verdicts(
+                            check,
+                            label_verdicts.get(pre_repair[1].sha256),
+                            label_verdicts.get(artifact.sha256),
+                            copy_authority,
+                        )
+                        audit_usage.append(usage)
+                        actual_cost += cost
+                        check_path = (
+                            workspace / f"repair-check-page-{page_index + 1}.json"
+                        )
+                        write_contract(check_path, check)
+                        self.harness.run(
+                            "accept-repair",
+                            workspace,
+                            {"session": session_path, "check": check_path},
+                        )
+                        current = _load_json(session_path)
+                        delivered = _selected_page_sha(current, page_index)
+                        if delivered == pre_repair[1].sha256:
+                            artifact = pre_repair[1]
+                        break
+                if is_v20_aurora_mode(self.execution_mode):
+                    (judgment, usage, cost), label_verdict = await asyncio.gather(
+                        self._audit_v20_candidate_with_retry(
+                            request,
+                            generation_request,
+                            generated_path,
+                            artifact,
+                        ),
+                        self._label_verdict(
+                            request,
+                            generation_request,
+                            artifact,
+                            label_account,
+                            label_verdicts,
+                        ),
+                    )
+                    if label_verdict is not None and label_verdict.status == "MISMATCH":
+                        # A wrong label character fails the page even when the
+                        # broad audit missed it; the one automatic repair then
+                        # edits this draft with the product references and the
+                        # harness label lock.
+                        _inject_label_failure(judgment, label_verdict)
+                        label_repair_requested = attempt_index == 0
+                    offfact = _offfact_lines(
+                        label_verdicts.get(artifact.sha256), copy_authority
+                    )
+                    if offfact:
+                        # Off-product text found in neither the user facts nor
+                        # the source images (model-invented) fails the page so
+                        # the one automatic repair removes it.
+                        _inject_offfact_failure(judgment, offfact)
                 else:
                     judgment, usage, cost = await self._audit_candidate(
                         request,
@@ -302,6 +563,7 @@ class AuroraMainImageProvider:
                     )
                     current = _load_json(session_path)
                 if current.get("state") == "REPAIR_REQUIRED" and attempt_index == 0:
+                    pre_repair = (generated_path, artifact)
                     repair_path = workspace / f"repair-page-{page_index + 1}.json"
                     write_contract(
                         repair_path,
@@ -357,14 +619,24 @@ class AuroraMainImageProvider:
             self._persist_session(request.job_id, current)
             raw_usage = dict(generation_usage)
             raw_usage["aurora_audit_calls"] = audit_usage
-            network_requests = raw_usage.get("network_requests", 1)
-            if not isinstance(network_requests, int) or network_requests < 0:
-                network_requests = 1
-            raw_usage["network_requests"] = network_requests + len(audit_usage)
+            raw_usage["label_fidelity_calls"] = label_account.calls
+            raw_usage["network_requests"] = (
+                generation_requests + len(audit_usage) + label_account.requests
+            )
+            actual_cost += label_account.cost_micros
             raw_metrics = raw_usage.get("metrics")
             metrics = dict(raw_metrics) if isinstance(raw_metrics, dict) else {}
             raw_usage["metrics"] = {
                 **metrics,
+                **(
+                    {
+                        "label_fidelity": _label_record(
+                            artifact, label_verdicts, label_repair_requested
+                        )
+                    }
+                    if self.label_gate_enabled
+                    else {}
+                ),
                 "harness_state": current.get("state"),
                 "page_index": page_index,
                 "automatic_repairs_used": current.get(
@@ -390,15 +662,19 @@ class AuroraMainImageProvider:
             OSError,
             ValueError,
         ) as exc:
+            made = generation_requests + len(audit_usage) + label_account.requests
+            failure_usage: dict[str, Any] = {
+                "provider_type": self.gateway.provider_name,
+                "called": made > 0,
+            }
+            if made:
+                failure_usage["network_requests"] = made
             return ProviderResult(
                 outcome=ProviderOutcome.FAILED,
                 error_code=getattr(exc, "code", "AURORA_EXECUTION_FAILED"),
                 error_message=str(exc),
                 usage_reported=False,
-                raw_usage={
-                    "provider_type": self.gateway.provider_name,
-                    "called": False,
-                },
+                raw_usage=failure_usage,
                 retryable=False,
                 provider_name=self.gateway.provider_name,
                 model_name=self.gateway.image_model,
@@ -668,6 +944,100 @@ class AuroraMainImageProvider:
                 pricing_version=self.gateway.pricing_version,
             )
 
+    async def _check_repair_identity(
+        self,
+        request: ProviderRequest,
+        generation_request: Mapping[str, Any],
+        pre_repair: tuple[Path, ProviderArtifact],
+        repaired: tuple[Path, ProviderArtifact],
+    ) -> tuple[dict[str, Any], dict[str, Any], int] | None:
+        """Compare the product label/identity of the draft and its repair.
+
+        Returns None when the check cannot be completed; the caller then
+        falls back to the full re-audit.
+        """
+
+        page_index = int(generation_request["page_index"])
+        drafts = []
+        for role, (path, artifact) in (
+            ("pre_repair_candidate", pre_repair),
+            ("repaired_candidate", repaired),
+        ):
+            drafts.append(
+                SourceImage(
+                    asset_id=f"{role}-page-{page_index}",
+                    group_key=request.job_id,
+                    filename=str(path),
+                    content_type=artifact.content_type,
+                    sha256=artifact.sha256,
+                    payload=artifact.payload,
+                    source_role="generated_candidate",
+                )
+            )
+        identity = _identity_sources(generation_request, request.job_id)
+        sources = (*identity[: _MAX_VISUAL_AUDIT_IMAGES - 2], *drafts)
+        contract = {
+            "page_index": page_index,
+            "pre_repair_image_sha256": pre_repair[1].sha256,
+            "repaired_image_sha256": repaired[1].sha256,
+            "identity_reference_count": len(sources) - 2,
+            "copy_policy": str(
+                _mapping(generation_request.get("page_contract")).get("copy_policy")
+                or ""
+            ),
+        }
+        result = await self.gateway.plan(
+            PlannerRequest(
+                workspace_id=request.workspace_id,
+                job_id=request.job_id,
+                group_key=f"{request.job_id}:v20-repair-check:{page_index}",
+                sources=tuple(sources),
+                page_count=page_index + 1,
+                language="zh-CN",
+                product_name="Aurora v2.0 repair identity check",
+                product_information=(json.dumps(contract, ensure_ascii=False),),
+                platform_code="TAOBAO_AURORA_V20_REPAIR_CHECK",
+                size="1024x1024",
+                idempotency_key=(
+                    f"{request.idempotency_key}:v20-repair-check:{page_index}:"
+                    f"{generation_request.get('revision', 1)}"
+                ),
+                system_prompt=_REPAIR_CHECK_SYSTEM_PROMPT,
+                planning_profile="aurora_repair_identity_check",
+            )
+        )
+        if result.error_code or not isinstance(result.payload, Mapping):
+            logger.warning(
+                "Aurora repair identity check unavailable job=%s page=%s code=%s",
+                request.job_id,
+                page_index,
+                result.error_code,
+            )
+            return None
+        try:
+            check = _normalize_repair_identity_check(dict(result.payload))
+        except AuroraPlanningError:
+            logger.warning(
+                "Aurora repair identity check malformed job=%s page=%s",
+                request.job_id,
+                page_index,
+            )
+            return None
+        check.update(
+            {
+                "agent_pixel_reviewed": True,
+                "review_mode": "DIRECT_PIXEL_LABEL_AND_IDENTITY_COMPARISON",
+                "page_index": page_index,
+                "pre_repair_image_sha256": pre_repair[1].sha256,
+                "repaired_image_sha256": repaired[1].sha256,
+            }
+        )
+        return (
+            check,
+            dict(result.normalized_usage),
+            int(result.actual_cost_micros or 0),
+        )
+
     async def _audit_v20_candidate_with_retry(
         self,
         request: ProviderRequest,
@@ -784,6 +1154,15 @@ class AuroraMainImageProvider:
             ),
             "authorized_fact_pool": _authorized_fact_pool_for_audit(
                 generation_request
+            ),
+            # Identity wording is authorized copy, not a claim: the product
+            # name the user entered and text printed on the original label.
+            "authorized_identity_copy": _authorized_identity_copy_for_audit(
+                request, generation_request
+            ),
+            "copy_policy": str(
+                _mapping(generation_request.get("page_contract")).get("copy_policy")
+                or ""
             ),
             "factual_copy_audit": {
                 "visible_copy_must_be_transcribed": True,
@@ -1408,6 +1787,72 @@ class AuroraMainImageProvider:
                     "真实物理证据和已核验事实闭合。"
                 )
 
+        # The immutable Harness rejects a judgment whose passed checks contradict
+        # its own observations (``require`` -> HARNESS_BLOCKED), which ends the
+        # page without its automatic repair. Closure/spec pages hit this often:
+        # the reviewer passes selling-point dominance on the full pack shot while
+        # observing that the claim evidence is not the primary visual. Mirror
+        # every such Harness invariant here and downgrade the contradicted pass
+        # to a normal material failure so the page enters its one-repair state.
+        layout = _mapping(
+            _mapping(generation_request.get("page_contract")).get("layout_contract")
+        )
+        layout_matches = bool(layout) and all(
+            observations.get(observation_key) == layout.get(contract_key)
+            for observation_key, contract_key in (
+                ("composition_archetype_seen", "composition_archetype"),
+                ("product_zone_seen", "product_zone"),
+                ("copy_zone_seen", "copy_zone"),
+                ("dominant_view_seen", "dominant_view"),
+                ("evidence_topology_seen", "evidence_topology"),
+            )
+        )
+        neighbor_difference = str(
+            observations.get("neighbor_layout_difference") or ""
+        ).strip()
+        contradictions: list[tuple[str, bool, str]] = [
+            (
+                "selling_point_visual_dominance",
+                observations.get("evidence_is_primary_visual") is True,
+                "卖点证据不是画面首要视觉，卖点视觉主导不能判定通过。",
+            ),
+            (
+                "evidence_relation_visible",
+                bool(observations.get("physical_evidence")),
+                "画面没有可见的物理证据，证据关系不能判定通过。",
+            ),
+        ]
+        if layout:
+            contradictions.extend(
+                [
+                    (
+                        "layout_not_cloned",
+                        layout_matches,
+                        "可见空间结构未满足本页版式合同，版式独立性不能判定通过。",
+                    ),
+                    (
+                        "approved_plan_fidelity_match",
+                        layout_matches,
+                        "可见版式未满足已批准方案的版式合同。",
+                    ),
+                ]
+            )
+        if expected_page > 0:
+            contradictions.append(
+                (
+                    "layout_not_cloned",
+                    len(neighbor_difference) >= 12,
+                    "未观察到与上一页的具体可见版式差异。",
+                )
+            )
+        checks_by_canonical_name = {str(item.get("name")): item for item in checks}
+        for check_name, consistent, evidence in contradictions:
+            check = checks_by_canonical_name[check_name]
+            if check.get("passed") is True and not consistent:
+                check["passed"] = False
+                check["score"] = min(float(check.get("score", 69)), 69)
+                check["observed_evidence"] = evidence
+
         # A contradictory passed=true/score<70 response must become a normal
         # material failure so the Harness can enter its one-repair state rather
         # than terminating the entire job during validation.
@@ -1482,7 +1927,9 @@ class AuroraMainImageProvider:
         normalized["audit_complete"] = True
         return normalized
 
-    async def audit_parallel_set(self, job_id: str) -> bool:
+    async def audit_parallel_set(
+        self, job_id: str, audit_attempt: int = 1
+    ) -> bool:
         """Merge six page-local sessions and run the native v2.0 set audit."""
 
         with self.session_factory() as db:
@@ -1604,11 +2051,13 @@ class AuroraMainImageProvider:
                 page_count=6,
                 language="zh-CN",
                 product_name="Aurora v2.0 six-page set audit",
-                product_information=(),
+                product_information=(_set_audit_contract(sources),),
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
-                idempotency_key=f"{job_id}:aurora-v20-set-audit:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                idempotency_key=_set_audit_idempotency_key(
+                    f"{job_id}:aurora-v20-set-audit:v1", audit_attempt
+                ),
+                system_prompt=_SET_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
@@ -1665,7 +2114,9 @@ class AuroraMainImageProvider:
             db.commit()
         return passed
 
-    async def audit_sequential_v20_set(self, job_id: str) -> bool:
+    async def audit_sequential_v20_set(
+        self, job_id: str, audit_attempt: int = 1
+    ) -> bool:
         """Run the native v2.0 set audit over the shared sequential session."""
 
         with self.session_factory() as db:
@@ -1705,11 +2156,13 @@ class AuroraMainImageProvider:
                 page_count=6,
                 language="zh-CN",
                 product_name="Aurora v2.0 six-page set audit",
-                product_information=(),
+                product_information=(_set_audit_contract(sources),),
                 platform_code="TAOBAO_AURORA_V20_SET_AUDIT",
                 size="1024x1024",
-                idempotency_key=f"{job_id}:aurora-v20-sequential-set-audit:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                idempotency_key=_set_audit_idempotency_key(
+                    f"{job_id}:aurora-v20-sequential-set-audit:v1", audit_attempt
+                ),
+                system_prompt=_SET_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
@@ -1967,13 +2420,11 @@ class AuroraMainImageProvider:
                 page_count=6,
                 language="zh-CN",
                 product_name="Aurora Six Page Blind Review",
-                product_information=(
-                    json.dumps({"image_sha256_by_page": expected_hashes}),
-                ),
+                product_information=(_set_audit_contract(sources),),
                 platform_code="TAOBAO_AURORA_SET_ROLE_AUDIT",
                 size="1024x1024",
                 idempotency_key=f"{request.job_id}:aurora-set-role-audit:v1",
-                system_prompt=_AUDIT_SYSTEM_PROMPT,
+                system_prompt=_SET_AUDIT_SYSTEM_PROMPT,
                 planning_profile="aurora_set_audit",
             )
         )
@@ -2129,6 +2580,22 @@ def _generation_sources(
     if not result:
         raise AuroraPlanningError("Aurora generation request has no usable references")
     return tuple(result)
+
+
+def _label_reference_sources(
+    generation_request: Mapping[str, Any], job_id: str
+) -> tuple[SourceImage, ...]:
+    """Original product evidence only, never a repair canvas.
+
+    A repair request lists the failed draft first in imagegen_reference_paths;
+    the label reference must come from the identity allowlist instead.
+    """
+
+    safe_request = dict(generation_request)
+    safe_request.update(
+        repair_canvas=None, edit_target=None, imagegen_reference_paths=None
+    )
+    return _generation_sources(safe_request, job_id)
 
 
 def _identity_sources(
@@ -2462,6 +2929,13 @@ def _normalize_aurora_square_artifact(
     )
 
 
+def _image_network_requests(raw_usage: Mapping[str, Any]) -> int:
+    """Upstream calls behind one gateway image result (at least one)."""
+
+    value = raw_usage.get("network_requests", 1)
+    return value if isinstance(value, int) and value >= 0 else 1
+
+
 def _failed_image_result(
     result: Any, provider: AuroraMainImageProvider
 ) -> ProviderResult:
@@ -2490,6 +2964,19 @@ def _failed_image_result(
         model_name=provider.gateway.image_model,
         pricing_version=provider.gateway.pricing_version,
     )
+
+
+def _set_audit_idempotency_key(base: str, attempt: int) -> str:
+    """Give each coordinator set-audit attempt its own durable planner call.
+
+    The planner transport journal replays a saved result for a repeated
+    idempotency key, including a failed one. With one fixed key, the
+    coordinator's set-audit retries replayed the first non-JSON response
+    instead of asking the reviewer again. Attempt 1 keeps the historical key so
+    crash recovery still replays an already paid verdict.
+    """
+
+    return base if attempt <= 1 else f"{base}:attempt-{attempt}"
 
 
 def _request_uses_parallel_v20(request: ProviderRequest) -> bool:
@@ -2578,6 +3065,30 @@ def _sha256(payload: bytes) -> str:
 
 def _mapping(value: object) -> dict[str, Any]:
     return dict(value) if isinstance(value, Mapping) else {}
+
+
+def _authorized_identity_copy_for_audit(
+    request: ProviderRequest, generation_request: Mapping[str, Any]
+) -> dict[str, Any]:
+    job_settings = _mapping(
+        _mapping(_mapping(request.configuration).get("job")).get("settings")
+    )
+    constitution = _mapping(generation_request.get("campaign_constitution"))
+    identity = _mapping(constitution.get("product_identity"))
+    return {
+        "product_name": str(job_settings.get("product_name") or "").strip(),
+        "label_and_package_text_source": str(
+            identity.get("identity_summary") or ""
+        ).strip(),
+        "rule": (
+            "Wording printed on the product label or package must be reproduced "
+            "on the product exactly as in the references; it is identity copy, "
+            "not a claim, and any changed label character is an identity "
+            "failure. Off the product, only the product name above and the "
+            "authorized_fact_pool (user facts plus readable source-image copy) "
+            "may appear (see copy_policy)."
+        ),
+    }
 
 
 def _authorized_fact_pool_for_audit(
@@ -3270,6 +3781,324 @@ def _normalize_set_role_audit_payload(payload: dict[str, Any]) -> dict[str, Any]
         other_cover_indexes if isinstance(other_cover_indexes, list) else [],
     )
     return payload
+
+
+def _normalize_repair_identity_check(payload: dict[str, Any]) -> dict[str, Any]:
+    check: dict[str, Any] = {
+        "reference_label_text": str(payload.get("reference_label_text") or "")
+    }
+    for key in ("pre_repair", "repaired"):
+        item = payload.get(key)
+        if not isinstance(item, Mapping) or not all(
+            isinstance(item.get(name), bool)
+            for name in ("label_exact", "identity_intact")
+        ):
+            raise AuroraPlanningError(f"Aurora repair identity check lacks {key}")
+        check[key] = {
+            "label_text_seen": str(item.get("label_text_seen") or ""),
+            "label_exact": item["label_exact"],
+            "identity_intact": item["identity_intact"],
+            "evidence": str(item.get("evidence") or ""),
+        }
+    return check
+
+
+_COPY_NOISE = re.compile(
+    r"[\s，,。；;：:·•・|｜/、【】\[\]()（）「」“”\"'!！?？\-—_~～+＋]+"
+)
+
+
+def _norm_copy(text: str) -> str:
+    return _COPY_NOISE.sub("", unicodedata.normalize("NFKC", text)).lower()
+
+
+def _copy_authority(
+    authorized_facts: Mapping[str, Any], job_settings: Mapping[str, Any]
+) -> tuple[str, ...]:
+    """Every string that may appear off the product: facts plus product name."""
+
+    values: list[str] = []
+    for bucket in authorized_facts.values():
+        if isinstance(bucket, list):
+            values.extend(str(item) for item in bucket if str(item).strip())
+    name = str(job_settings.get("product_name") or "").strip()
+    if name:
+        values.append(name)
+    return tuple(dict.fromkeys(values))
+
+
+def _unauthorized_offproduct_lines(
+    lines: Sequence[str], authority: Sequence[str]
+) -> list[str]:
+    """Off-product text lines whose wording is not covered by the authority."""
+
+    pool = [norm for norm in (_norm_copy(item) for item in authority) if norm]
+    if not pool:
+        return []
+    found: list[str] = []
+    for line in lines:
+        norm = _norm_copy(str(line))
+        if not norm or any(norm in item for item in pool):
+            continue
+        segments = [
+            part
+            for part in (_norm_copy(piece) for piece in _COPY_NOISE.split(str(line)))
+            if part
+        ]
+        if segments and all(any(part in item for item in pool) for part in segments):
+            continue
+        found.append(str(line).strip())
+    return list(dict.fromkeys(found))
+
+
+def _offfact_lines(
+    entry: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
+    authority: Sequence[str],
+) -> list[str]:
+    if entry is None or entry[1] is None or not authority:
+        return []
+    lines = [str(line) for line in entry[1].get("other_text_lines", [])]
+    return _unauthorized_offproduct_lines(lines, authority)
+
+
+def _with_source_copy(
+    authorized_facts: Mapping[str, Any], source_copy: Sequence[str]
+) -> dict[str, Any]:
+    """Add the source-image transcription to the display-fact bucket."""
+
+    facts = {key: list(value) if isinstance(value, list) else value
+             for key, value in authorized_facts.items()}
+    display = [str(item) for item in facts.get("display_facts") or []]
+    display.extend(line for line in source_copy if line not in display)
+    facts["display_facts"] = display
+    return facts
+
+
+def _inject_offfact_failure(judgment: dict[str, Any], lines: Sequence[str]) -> None:
+    """Fail factual_copy_match for model-invented off-product text."""
+
+    quoted = "".join(f"「{line}」" for line in lines)
+    problem = "画外出现既不在用户事实、也不在原图中的文字（模型新增）：" + quoted
+    change = (
+        "删除画外文字" + quoted + "，连同其底板、括号和分隔线，用周围背景自然补全；"
+        "商品标签和其余画面层保持不变"
+    )
+    for check in judgment.get("checks", []):
+        if isinstance(check, dict) and check.get("name") == "factual_copy_match":
+            check["passed"] = False
+            check["score"] = min(float(check.get("score") or 0), 40)
+            check["observed_evidence"] = problem
+        if isinstance(check, dict) and check.get("name") == "no_unsupported_claim":
+            check["passed"] = False
+            check["score"] = min(float(check.get("score") or 0), 40)
+            check["observed_evidence"] = problem
+    deficiencies = judgment.setdefault("all_material_deficiencies", [])
+    for name in ("factual_copy_match", "no_unsupported_claim"):
+        existing = next(
+            (
+                item
+                for item in deficiencies
+                if isinstance(item, dict) and item.get("check") == name
+            ),
+            None,
+        )
+        if existing is not None:
+            if quoted not in str(existing.get("visible_problem", "")):
+                existing["visible_problem"] = (
+                    f"{existing.get('visible_problem', '')}；{problem}"
+                )
+                existing["required_change"] = (
+                    f"{existing.get('required_change', '')}；{change}"
+                )
+        else:
+            deficiencies.append(
+                {
+                    "check": name,
+                    "visible_problem": problem,
+                    "root_cause": "生成时新增了用户事实和原图都没有的文字",
+                    "required_change": change,
+                }
+            )
+    judgment["offproduct_copy_gate"] = {"unauthorized_lines": list(lines)}
+
+
+def _apply_offfact_verdicts(
+    check: dict[str, Any],
+    pre_repair: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
+    repaired: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
+    authority: Sequence[str],
+) -> None:
+    """Deliver the pre-repair draft when only the repair invented text."""
+
+    before = _offfact_lines(pre_repair, authority)
+    after = _offfact_lines(repaired, authority)
+    item = check.get("repaired")
+    if not isinstance(item, dict):
+        return
+    item["offproduct_unauthorized_text"] = after
+    if after and not before and repaired is not None:
+        item["label_exact"] = False
+        item["evidence"] = (
+            "返修后画外出现模型新增文字"
+            + "".join(f"「{line}」" for line in after)
+            + "，返修前没有。"
+            + str(item.get("evidence") or "")
+        )
+
+
+def _inject_label_failure(
+    judgment: dict[str, Any], verdict: label_fidelity.LabelVerdict
+) -> None:
+    """Fail factual_copy_match with the exact wrong label characters.
+
+    factual_copy_match is a hard check outside the rebuild set, so the one
+    automatic repair edits this draft (repair canvas + product references +
+    label lock) instead of redrawing the page.
+    """
+
+    problem = "商品标签文字与原商品不一致：" + verdict.summary()
+    change = (
+        "以原商品身份参考为准，只把错字逐字改回："
+        + "；".join(
+            f"「{item.seen}」→「{item.expected}」" for item in verdict.mismatches
+        )
+        + "；标签其余文字、构图和其他画面层保持不变"
+    )
+    for check in judgment.get("checks", []):
+        if isinstance(check, dict) and check.get("name") == "factual_copy_match":
+            check["passed"] = False
+            check["score"] = min(float(check.get("score") or 0), 40)
+            check["observed_evidence"] = problem
+    deficiencies = judgment.setdefault("all_material_deficiencies", [])
+    existing = next(
+        (
+            item
+            for item in deficiencies
+            if isinstance(item, dict) and item.get("check") == "factual_copy_match"
+        ),
+        None,
+    )
+    if existing is not None:
+        additions = {"visible_problem": problem, "required_change": change}
+        for key, addition in additions.items():
+            existing[key] = f"{existing.get(key, '')}；{addition}"
+    else:
+        deficiencies.append(
+            {
+                "check": "factual_copy_match",
+                "visible_problem": problem,
+                "root_cause": "生成时商品标签上的小字被改写，整页审图未逐字发现",
+                "required_change": change,
+            }
+        )
+    judgment["label_fidelity_gate"] = verdict.as_record()
+
+
+def _apply_label_verdicts(
+    check: dict[str, Any],
+    pre_repair: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
+    repaired: tuple[label_fidelity.LabelVerdict, dict[str, Any] | None] | None,
+) -> None:
+    """Replace the model's self-reported label_exact with code verdicts.
+
+    The repair check is asked to transcribe and compare in one answer and
+    echoed the reference on 2026-11-25 (浮光瓶子香 reported as exact).  A blind
+    read compared in code decides label_exact whenever the label was legible;
+    identity_intact stays with the model check.
+    """
+
+    for key, entry in (("pre_repair", pre_repair), ("repaired", repaired)):
+        item = check.get(key)
+        if entry is None or not isinstance(item, dict):
+            continue
+        verdict, reading = entry
+        if verdict.status not in {"PASS", "MISMATCH"}:
+            continue
+        item["label_exact"] = verdict.status == "PASS"
+        item["label_mismatch_count"] = verdict.mismatch_count
+        if reading is not None:
+            item["label_text_seen"] = "；".join(
+                "／".join(lines) for lines in reading.get("product_label_lines", [])
+            )
+        item["label_gate"] = verdict.as_record()
+        if verdict.status == "MISMATCH":
+            item["evidence"] = (
+                f"逐字读取标签：{verdict.summary()}。" + str(item.get("evidence") or "")
+            )
+
+
+def _label_record(
+    artifact: ProviderArtifact | None,
+    verdicts: Mapping[str, tuple[label_fidelity.LabelVerdict, dict[str, Any] | None]],
+    repair_requested: bool,
+) -> dict[str, Any]:
+    entry = verdicts.get(artifact.sha256) if artifact is not None else None
+    if entry is None:
+        return {"gate_version": label_fidelity.GATE_VERSION, "status": "UNCHECKED"}
+    verdict, reading = entry
+    status = verdict.status
+    if status == "MISMATCH":
+        status = "RESIDUAL"
+    elif status == "PASS" and repair_requested:
+        status = "REPAIRED"
+    return {
+        **verdict.as_record(),
+        "gate_version": label_fidelity.GATE_VERSION,
+        "status": status,
+        **(
+            {"residual": label_fidelity.residual_summary(verdict)}
+            if status == "RESIDUAL"
+            else {}
+        ),
+        "reading": reading,
+    }
+
+
+def _selected_page_sha(session: Mapping[str, Any], page_index: int) -> str | None:
+    versions = [
+        item
+        for item in session.get("generated_versions", [])
+        if isinstance(item, Mapping)
+        and item.get("page_index") == page_index
+        and item.get("status") in {"ACCEPTED", "ACCEPTED_WITH_RESIDUALS"}
+    ]
+    return str(versions[-1].get("sha256")) if versions else None
+
+
+def _set_audit_contract(sources: Sequence[SourceImage]) -> str:
+    """Contract for the six-page set-role review, including exact hashes."""
+
+    return json.dumps(
+        {
+            "image_sha256_by_page": {
+                str(index): source.sha256 for index, source in enumerate(sources)
+            },
+            "required_fields": {
+                "agent_pixel_reviewed": "true",
+                "review_mode": "BLIND_SIX_PAGE_ROLE_COMPARISON",
+                "reviewed_page_indexes": [0, 1, 2, 3, 4, 5],
+                "image_sha256_by_page": "copy the object above exactly",
+                "identified_search_page_index": (
+                    "index 0-5 of the page that reads as the search cover"
+                ),
+                "search_role_is_unique": (
+                    "true when only that page reads as a search cover"
+                ),
+                "confusable_page_indexes": (
+                    "other page indexes that could also read as a search cover; "
+                    "[] when none"
+                ),
+                "search_identification_evidence": (
+                    "concrete pixel evidence for the identified search page"
+                ),
+                "carousel_distinctions": (
+                    "for each page 1-5: {page_index, why_not_search_cover} "
+                    "with concrete pixel evidence"
+                ),
+            },
+        },
+        ensure_ascii=False,
+    )
 
 
 def _normalize_parallel_set_audit_payload(

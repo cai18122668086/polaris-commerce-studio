@@ -42,7 +42,12 @@ def test_capacity_accepts_3000_and_rejects_values_above_it():
     import pytest
     from pydantic import ValidationError
 
-    assert Settings(_env_file=None).image_global_concurrency == 3000
+    # Default is a realistic fleet-wide upstream cap; 3000 stays the maximum.
+    assert Settings(_env_file=None).image_global_concurrency == 40
+    assert (
+        Settings(_env_file=None, image_global_concurrency=3000).image_global_concurrency
+        == 3000
+    )
     assert Settings(_env_file=None, xinghe_concurrency=3000).xinghe_concurrency == 3000
     with pytest.raises(ValidationError):
         Settings(_env_file=None, image_global_concurrency=3001)

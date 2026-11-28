@@ -41,7 +41,7 @@ export function DevelopmentProviderSettings() {
     </button>
     {open && <div className={styles.backdrop} role="presentation">
       <section className={styles.dialog} role="dialog" aria-modal="true" aria-labelledby="provider-settings-title">
-        <header><div><span>DEVELOPER ONLY</span><h2 id="provider-settings-title">生图服务配置</h2><p>密钥只发送到本机后端并写入被 Git 忽略的本地环境文件，页面不会回显或保存密钥。</p></div><button type="button" onClick={() => setOpen(false)} aria-label="关闭生图服务配置"><X size={18} /></button></header>
+        <header><div><span>仅开发者可见</span><h2 id="provider-settings-title">生图服务配置</h2><p>密钥只发送到本机后端并写入被 Git 忽略的本地环境文件，页面不会回显或保存密钥。</p></div><button type="button" onClick={() => setOpen(false)} aria-label="关闭生图服务配置"><X size={18} /></button></header>
         <form onSubmit={(event) => void submit(event)}>
           <label><span>API Key</span><div className={styles.secret}><KeyRound size={16} /><input autoFocus required minLength={8} autoComplete="new-password" type={showKey ? "text" : "password"} value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={settings.data?.configured ? "已配置；输入新密钥可替换" : "粘贴 API Key"} /><button type="button" onClick={() => setShowKey((value) => !value)} aria-label={showKey ? "隐藏密钥" : "显示密钥"}>{showKey ? <EyeOff size={16} /> : <Eye size={16} />}</button></div></label>
           <label><span>Base URL</span><input required value={baseUrl} onChange={(event) => setBaseUrlOverride(event.target.value)} placeholder={settings.isLoading ? "读取本机配置…" : "输入服务地址"} /></label>

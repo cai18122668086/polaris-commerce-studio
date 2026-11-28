@@ -43,6 +43,7 @@ def clone_env(video_gen, tmp_path):
     client, auth, provider, root, pid, user = video_gen
     settings = client.app.state.settings
     settings.video_cosyvoice_enabled = True
+    settings.video_voice_clone_enabled = True
     settings.video_cosyvoice_api_key = SecretStr("fixture-private-key")
     state = {"created": [], "synthesis": [], "query": [], "mode": "ok", "status": "OK"}
     mp3 = tmp_path / "fixture.mp3"
@@ -70,6 +71,16 @@ def clone_env(video_gen, tmp_path):
             return httpx.Response(200, content=mp3.read_bytes())
         assert req.url.host == "maas.qianwenaiapi.com"
         assert req.headers["authorization"] == "Bearer fixture-private-key"
+        if state["mode"] == "unpurchased":
+            return httpx.Response(
+                403,
+                json={
+                    "code": "AccessDenied.Unpurchased",
+                    "message": "Access to model denied. Please make sure you are "
+                    "eligible for using the model.",
+                    "request_id": "fixture-denied",
+                },
+            )
         body = json.loads(req.content)
         inputs = body["input"]
         if inputs.get("action") == "create_voice":

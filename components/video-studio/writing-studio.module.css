@@ -1,0 +1,50 @@
+/* 爆款文案: a quiet step rail beside one working surface. Colours come from the studio variables. */
+.writing { display: grid; gap: 18px; }
+.layout { display: grid; grid-template-columns: 232px minmax(0, 1fr); gap: 20px; align-items: start; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; position: sticky; top: 16px; }
+.steps button { width: 100%; display: grid; grid-template-columns: 26px minmax(0, 1fr); gap: 10px; align-items: start; text-align: left; padding: 10px 12px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--ink); cursor: pointer; }
+.steps button:hover { background: color-mix(in srgb, var(--border) 45%, transparent); }
+.steps button[aria-current="step"] { background: white; border-color: var(--border); }
+.steps b { display: block; font-size: 13px; font-weight: 600; }
+.steps small { display: block; margin-top: 2px; font-size: 11.5px; line-height: 1.5; color: var(--muted); }
+.stepIndex { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--border); display: grid; place-items: center; font-size: 11.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stepIndex[data-done] { border-color: var(--ink); color: var(--ink); }
+.steps button[aria-current="step"] .stepIndex { border-color: var(--ink); background: var(--ink); color: white; }
+.stage { min-width: 0; background: white; border: 1px solid var(--border); border-radius: 10px; padding: 18px 20px 20px; display: grid; gap: 16px; }
+.stageHeader { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.stageHeader span { font-size: 11.5px; color: var(--muted); }
+.stageHeader h2 { margin: 2px 0 0; font-size: 17px; letter-spacing: -.2px; }
+.facts, .final { display: grid; gap: 12px; }
+.facts label, .final label { display: grid; gap: 8px; font-size: 13px; font-weight: 600; }
+.final label span { display: flex; justify-content: space-between; align-items: baseline; }
+.final label small { font-weight: 400; color: var(--muted); font-variant-numeric: tabular-nums; }
+.facts textarea, .final textarea { width: 100%; padding: 12px 14px; font: inherit; font-weight: 400; font-size: 14px; line-height: 1.8; resize: vertical; }
+.facts p, .final p { margin: 0; font-size: 12px; line-height: 1.8; color: var(--muted); max-width: 64ch; }
+.actions { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; }
+.actions button { display: inline-flex; align-items: center; gap: 6px; }
+.empty { display: grid; justify-items: start; gap: 8px; padding: 28px 4px; }
+.empty b { font-size: 14px; }
+.empty p { margin: 0; font-size: 12.5px; color: var(--muted); }
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  .steps { position: static; grid-auto-flow: column; grid-auto-columns: minmax(120px, 1fr); overflow-x: auto; }
+  .steps small { display: none; }
+}
+
+
+.switch { justify-self: start; border: 0; background: none; padding: 0; color: var(--muted); font: inherit; font-size: 12.5px; cursor: pointer; }
+.switch:hover { color: var(--ink); }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .steps button[aria-current="step"]{background:#0f0e0d}
+:global(.theme-ember) .steps button[aria-current="step"] .stepIndex{color:#0f0e0d}
+:global(.theme-ember) .stage{background:#0f0e0d}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .steps button[aria-current="step"]{background:#ffffff}
+:global(.theme-plaster) .steps b{font-weight:500}
+:global(.theme-plaster) .steps button[aria-current="step"] .stepIndex{color:#ffffff}
+:global(.theme-plaster) .stage{background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .facts label,:global(.theme-plaster) .final label{font-weight:500}
+/* plaster:end */

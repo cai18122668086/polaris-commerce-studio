@@ -1,11 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
+import { FREE_TRIAL_TEXT, billableLabel, creditPhrase, isPriced } from "@/features/video-studio/credit-notes";
+import { CONFIRMING_HINT, planningButtonLabel } from "@/features/video-studio/editing-primary";
+import { planningJobProgress } from "@/features/video-studio/editing-progress";
+import { EditingProgressSteps } from "./editing-progress";
+import { useCallback, useEffect, useEffectEvent, useImperativeHandle, useRef, useState, type Ref } from "react";
 import { minDistinctMotionGroups, preferredDistinctMotionGroups } from "@/features/video-studio/editing-density";
 import { editingMessage, editingTemplateName, editingPlanningAction } from "@/features/video-studio/editing-presentation";
 import type { EditingMusicPreference } from "@/features/video-studio/editing-options";
 import { EditingAutomaticRun } from "@/features/video-studio/editing-run";
+import { planSubmission, resumablePreparation } from "@/features/video-studio/editing-resume";
 import { isEditingSuite } from "@/features/video-studio/editing-suite";
+import { ApiError } from "@/lib/api/api-error";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
 import type { components } from "@/lib/api/generated/openapi";
@@ -14,12 +20,18 @@ import { EditingCreativeOptions, type AppleCreativeOptions } from "./editing-cre
 import styles from "./editing-workspace.module.css";
 import flow from "./editing-flow.module.css";
 import type { TemplateCard } from "./editing-template-gallery";
+import { mediaUrl } from "@/lib/api/base-url";
+import { ShortOfCredits } from "./studio-content";
 
 type Job = components["schemas"]["EditingPlanningTaskResponse"];
 type PreviewTask = components["schemas"]["EditingTaskResponse"];
 type BaseTask = Pick<PreviewTask, "id" | "status" | "stage" | "created_at" | "artifacts" | "source_frame">;
-export type EditingPrimaryState = { label: string; hint: string; disabled: boolean; phase: "prepare" | "generate" | "recover" | "waiting" | "rendering" | "preview" };
-export type EditingPrimaryAction = { run: () => void; cancel: () => void };
+export type EditingPrimaryState = { label: string; hint: string; disabled: boolean; phase: "prepare" | "generate" | "recover" | "waiting" | "rendering" | "preview";
+  /** 当前这次编排生成的剪辑任务（预览/成片）；外层主按钮据此直接确认导出或查看成片。 */
+  previewTaskId?: string };
+export type EditingPrimaryAction = { run: () => void; cancel: () => void;
+  /** 用户二次确认后，用同样设置重新编排一次（再次计费）；当前版本保留。 */
+  replan: () => void };
 export type CarrySelection = {
   projectId: string;
   sourceId: string;
@@ -41,7 +53,6 @@ const autoPreviewErrors: Record<string, string> = {
   EDITING_ORIGINAL_BROWSER_ASSETS_REQUIRED: "候选使用的原库底板或纹理无法核验，代理未提交。请打开候选查看对应段落。",
   EDITING_ORIGINAL_BROWSER_FONTS_REQUIRED: "候选使用的原库启动字体无法核验，代理未提交。请打开候选查看对应段落。",
 };
-const labels: Record<string, string> = { queued: "排队中", reading_inputs: "检查口播与素材", building_request: "检查模板是否适用", planning: "正在编排视频", storing: "保存编排", prepared: "素材检查完成", completed: "编排已完成", failed: "编排未完成", cancelled: "已取消" };
 const errors: Record<string, string> = {
   EDITING_TEMPLATE_IMAGE_MATERIALS_REQUIRED: "此模板的配图槽支持图片，请取消视频素材或改用图片。",
   EDITING_TASK_STORAGE_UNAVAILABLE: "规划服务暂时无法写入工作目录。请在存储恢复后重试此任务。",
@@ -52,7 +63,8 @@ const errors: Record<string, string> = {
   EDITING_PARALLEL_ITEMS_INVALID: "并列动效的事项须各有独立实录词点，并分别绑定文字或素材。请核对编排。",
   EDITING_TEMPLATE_LABEL_CARD_INPUTS_REQUIRED: "原生文字卡需要三个实录短词及各自的入场间隔，请核对对应段落。",
   EDITING_ORIENTATION_REVIEW_REQUIRED: "原生模板需要方形像素的 9:16 竖屏原片，请选择符合画幅的转录。",
-  EDITING_PLAN_ALREADY_SUBMITTED: "模型提交结果待核对，不能自动再次计费。",
+  EDITING_PLAN_ALREADY_SUBMITTED: "正在确认结果，不会重复扣费。",
+  EDITING_PLAN_ALREADY_GENERATED: "这条口播已用同样的模板和素材剪过，已为你接上原来的结果，不会重复扣费。",
   VIDEO_ASSISTANCE_OUTCOME_UNKNOWN: "模型请求已提交，但结果尚未确认。已保留原提交记录，请先核对，避免重复计费。",
   EDITING_PREPARED_REQUEST_CHANGED: "准备记录的产物已变化，请先恢复或重新准备。",
   EDITING_PLAN_SOURCE_CHANGED: "原片或转录已变化，请恢复对应版本。",
@@ -61,12 +73,18 @@ const errors: Record<string, string> = {
   EDITING_TEMPLATE_GROUPS_INSUFFICIENT: "没有适用的成套动效。请核对项目备忘、素材或模板后重新准备。",
   EDITING_TEMPLATE_DEPENDENCIES_CHANGED: "准备后有模板原件无法核验，本次模型请求未提交。请重新准备。",
   EDITING_PLAN_CONTRACT_INVALID: "模型编排未通过模板校验。响应已保存，重新校验不会再次调用计费模型。",
-  EDITING_PLAN_EMPTY_RESPONSE: "模型未返回编排正文，无法通过重新校验恢复。已保存调用回执，请先核对用量；重新生成会产生新的模型费用。",
+  EDITING_PLAN_EMPTY_RESPONSE: "这次编排没有返回内容。重新生成会产生新的费用，请确认后再试。",
   EDITING_TRANSCRIPT_REVIEW_REQUIRED: "自动字幕与已确认原稿差异较大，请先校对字幕并重新对齐，再继续编排。此检查不计模型费用。",
 };
 
-export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState, music = "template", referenceText = "", onReferenceChange, referenceDisabled, referenceConfirmed = false, creativeOptions, onCreativeChange, onInputsChanged }: {
+export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSelect, onNativePlan, onPreview, carryFrom, onClearCarry, template, actionRef, onPrimaryState, music = "template", referenceText = "", onReferenceChange, referenceDisabled, referenceConfirmed = false, creativeOptions, onCreativeChange, onInputsChanged, credits, renderCredits, renderShort }: {
   onInputsChanged?: () => void;
+  /** 编排 + 出片的积分（null = 未定价） */
+  credits?: number | null;
+  /** 单独出片的积分（null = 未定价） */
+  renderCredits?: number | null;
+  /** 余额不足：生成预览停用 */
+  renderShort?: boolean;
   creativeOptions?: AppleCreativeOptions;
   onCreativeChange?: (options: AppleCreativeOptions) => void;
   music?: EditingMusicPreference;
@@ -83,6 +101,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   onClearCarry: () => void;
 }) {
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [jobsLoaded, setJobsLoaded] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [activePreparation, setActivePreparation] = useState<{id: string; signature: string}>();
   const preparationKey = `tengli-editing-preparation:${workspaceId}:${projectId}`;
@@ -128,6 +147,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const [batchSelection, setBatchSelection] = useState<string[]>([]);
   const [batchErrors, setBatchErrors] = useState<Record<string, string>>({});
   const [batchCount, setBatchCount] = useState(0);
+  // 用户确认过「重新编排」的准备记录：只认自己的提交，并带 replan 放行服务端的防重复计费。仅存于内存，刷新不会自动再扣费。
+  const [replanIds, setReplanIds] = useState<string[]>([]);
   const intent = useRef<{ key: string; id: string } | undefined>(undefined);
   const automatic = useRef(new EditingAutomaticRun());
   const candidates = tasks.filter(task => task.status === "completed" && task.source_frame?.supports_native_portrait !== false && task.artifacts.some(a => a.role === "transcript"));
@@ -141,7 +162,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   })), [workspaceId, projectId]);
   useEffect(() => {
     let live = true;
-    const reload = () => { void refresh().then(rows => { if (live) { setJobs(rows); setLoadError(""); } }).catch(() => { if (live) setLoadError("暂时无法读取规划任务，请稍后重试。"); }); };
+    const reload = () => { void refresh().then(rows => { if (live) { setJobs(rows); setJobsLoaded(true); setLoadError(""); } }).catch(() => { if (live) setLoadError("暂时无法读取规划任务，请稍后重试。"); }); };
     reload(); const timer = setInterval(reload, 5000);
     return () => { live = false; clearInterval(timer); };
   }, [refresh]);
@@ -159,8 +180,21 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     setMaterialIds(ids);
   };
   const preparation = activePreparation?.signature === formSignature ? jobs.find(job => job.id === activePreparation.id) : undefined;
+  // After a refresh or on another device the local pointer may be missing. Point
+  // back at a submitted plan that is still running or can be revalidated for
+  // free, so the primary action stays 「继续生成」 instead of a new billed run.
+  const resumeChecked = useRef("");
+  useEffect(() => {
+    const key = `${selectedCandidate}:${templateId}`;
+    if (!jobsLoaded || !preparationLoaded || !materialPreferenceLoaded || !selectedCandidate || !templateId || resumeChecked.current === key) return;
+    resumeChecked.current = key;
+    if (preparation) return;
+    const id = resumablePreparation(jobs, selectedCandidate, templateId);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- restores a server-side pointer once per source/template
+    if (id) setActivePreparation({ id, signature: formSignature });
+  }, [formSignature, jobs, jobsLoaded, materialPreferenceLoaded, preparation, preparationLoaded, selectedCandidate, templateId]);
   const prepared = preparation?.status === "prepared" ? preparation : undefined;
-  const submitted = prepared && jobs.find(job => job.prepared_task_id === prepared.id);
+  const submitted = prepared && replanIds.includes(prepared.id) ? jobs.find(job => job.prepared_task_id === prepared.id) : planSubmission(jobs, prepared);
   const rendered = tasks.find(task => task.id === submitted?.preview_task_id);
   const rendering = !!rendered && ["queued", "running"].includes(rendered.status);
   const renderStages: Record<string, string> = { queued: "排队等待渲染", preparing_source: "准备口播画面", preparing_foreground: "准备人物前景", rendering: "渲染视频画面", validating: "检查音视频", building_preview: "准备全片预览", storing: "保存视频" };
@@ -172,12 +206,13 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
   const emptyResponse = submitted?.error_code === "EDITING_PLAN_EMPTY_RESPONSE";
   const nextAction = editingPlanningAction(prepared, submitted || undefined);
   const primaryDisabled = busy || !selectedCandidate || !templateId || waiting || nextAction === "wait" || nextAction === "blocked";
-  const primaryLabel = busy ? "正在提交…" : waiting ? "正在检查素材…" : submissionPending ? "正在编排视频…" : emptyResponse ? "调用回执待核对" : submissionUncertain ? "提交结果待确认" : submitted?.status === "completed" ? "查看视频预览" : nextAction === "recover" ? "继续处理已保存结果" : submissionFailed ? "重新检查素材" : nextAction === "blocked" ? prepared && !prepared.execution_available ? "自动剪辑暂不可用" : "请先补齐素材" : prepared ? "生成预览（计费）" : "检查素材并继续";
-  const primaryHint = emptyResponse ? errors.EDITING_PLAN_EMPTY_RESPONSE : submissionUncertain ? "请等待结果确认，避免重复提交和计费" : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : "下一步会调用模型，按实际用量计费" : "先检查口播和素材，这一步不计模型费用";
+  const primaryLabel = planningButtonLabel({ credits, busy, checking: waiting, arranging: submissionPending, uncertain: submissionUncertain, emptyResponse, render: submitted?.status === "completed" ? rendered?.status : undefined, arranged: submitted?.status === "completed", recover: nextAction === "recover", failed: submissionFailed, blocked: nextAction === "blocked", unavailable: Boolean(prepared && !prepared.execution_available), ready: Boolean(prepared) });
+  const primaryHint = emptyResponse ? errors.EDITING_PLAN_EMPTY_RESPONSE : submissionUncertain ? CONFIRMING_HINT : submitted?.status === "completed" ? renderHint || "编排已完成，正在衔接视频预览" : submissionPending ? "完成后自动出现在右侧，无需重复提交" : waiting ? "正在检查口播、素材与模板" : submissionFailed ? "编排处理已中断，已保存响应可重新校验，无需重复调用模型。" : prepared?.template_style_blockers?.length ? editingMessage(prepared.template_style_blockers[0], "素材或模板条件未齐，请补齐后重新检查") : prepared && (prepared.available_template_group_count ?? 1) < 1 ? "当前素材不足，请补齐素材或更换模板" : prepared ? !prepared.execution_available ? "自动剪辑暂未开放，可先查看已有视频" : `下一步会调用模型，${creditPhrase(credits)}` : "先检查口播和素材，这一步不计模型费用";
   const primaryPhase = waiting || submissionPending || submissionUncertain ? "waiting" : rendering ? "rendering" : nextAction === "recover" ? "recover" : submitted?.status === "completed" ? "preview" : prepared && !submissionFailed ? "generate" : "prepare";
-  useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: primaryPhase }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, primaryPhase]);
+  const previewTaskId = submitted?.status === "completed" ? submitted.preview_task_id ?? undefined : undefined;
+  useEffect(() => { onPrimaryState?.({ label: primaryLabel, hint: primaryHint, disabled: primaryDisabled, phase: primaryPhase, previewTaskId }); }, [onPrimaryState, primaryLabel, primaryHint, primaryDisabled, primaryPhase, previewTaskId]);
 
-  const submit = async (mode: "prepare" | "generate", prepared?: Job) => {
+  const submit = async (mode: "prepare" | "generate", prepared?: Job, replan = false) => {
     const taskId = prepared?.base_task_id || selectedCandidate;
     if (!taskId || (mode === "prepare" && !templateId)) return;
     setBusy(true); setError("");
@@ -186,20 +221,28 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       const currentMaterials = mode === "prepare" ? [...effectiveMaterialIds].sort() : [];
       const selectedTemplate = mode === "prepare" ? templateId : undefined;
       const shouldPreview = Boolean(prepared?.auto_preview_available && !manualPreviewIds.includes(prepared.id));
-      const key = JSON.stringify([taskId, mode, prepared?.id, currentMaterials, selectedTemplate, shouldPreview, mode === "prepare" ? [music, selectedCreative] : undefined]);
+      const confirmedReplan = mode === "generate" && !!prepared && replanIds.includes(prepared.id);
+      const key = JSON.stringify([taskId, mode, prepared?.id, currentMaterials, selectedTemplate, shouldPreview, mode === "prepare" ? [music, selectedCreative] : undefined, replan, confirmedReplan]);
       if (!intent.current || intent.current.key !== key) intent.current = { key, id: crypto.randomUUID() };
       const created = unwrapApiResponse(await apiClient.POST(`${root}/editing-tasks/{task_id}/planning-tasks`, {
         params: { path: { workspace_id: workspaceId, task_id: taskId } }, signal: AbortSignal.timeout(12000),
-        body: { request_id: intent.current.id, mode, template_id: selectedTemplate, auto_preview: shouldPreview, ...(prepared ? { prepared_task_id: prepared.id } : { music, ...(selectedCreative ? { creative_options: selectedCreative } : {}) }), ...(currentMaterials.length ? { material_ids: currentMaterials } : {}) },
+        body: { request_id: intent.current.id, mode, template_id: selectedTemplate, auto_preview: shouldPreview, replan: confirmedReplan, ...(prepared ? { prepared_task_id: prepared.id } : { music, ...(selectedCreative ? { creative_options: selectedCreative } : {}) }), ...(currentMaterials.length ? { material_ids: currentMaterials } : {}) },
       }));
       if (mode === "prepare") {
+        if (replan) setReplanIds(ids => ids.includes(created.id) ? ids : [...ids, created.id]);
         setActivePreparation({ id: created.id, signature: formSignature });
         automatic.current.prepared(automaticIntent, created.id);
       }
       intent.current = undefined; setJobs(await refresh());
-    } catch (caught) { automatic.current.cancel(); setError(editingMessage(caught, "提交结果尚未确认，请稍后重试同一次操作。")); }
+    } catch (caught) {
+      automatic.current.cancel();
+      if (caught instanceof ApiError && caught.code === "EDITING_PLAN_ALREADY_GENERATED") { intent.current = undefined; setError(errors.EDITING_PLAN_ALREADY_GENERATED); setJobs(await refresh().catch(() => jobs)); }
+      else setError(editingMessage(caught, "提交结果尚未确认，请稍后重试同一次操作。"));
+    }
     finally { setBusy(false); }
   };
+  // Reads the latest submit without re-running the effect on every render.
+  const generateAutomatically = useEffectEvent((job: Job) => { void submit("generate", job); });
   useEffect(() => {
     const active = automatic.current.active;
     if (!active || active.signature !== formSignature || busy) return;
@@ -210,8 +253,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     if (!prepared || active.preparationId !== prepared.id || nextAction !== "generate") return;
     // Consume the explicit click before sending. Reloads and later form changes
     // never recreate this in-memory authorization or retry a billed request.
-    if (automatic.current.take(formSignature, prepared.id)) void submit("generate", prepared);
-  }, [prepared, preparation, nextAction, busy, formSignature, submit]);
+    if (automatic.current.take(formSignature, prepared.id)) generateAutomatically(prepared);
+  }, [prepared, preparation, nextAction, busy, formSignature]);
   const action = async (job: Job, kind: "cancel" | "retry") => {
     setBusy(true); setError("");
     try {
@@ -259,7 +302,11 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
     } catch (caught) { setError(editingMessage(caught, "预览提交尚未确认，再次点击会查询同一任务。")); }
     finally { setBusy(false); }
   };
-  useImperativeHandle(actionRef, () => ({ cancel: () => { automatic.current.cancel(); }, run: () => {
+  useImperativeHandle(actionRef, () => ({ cancel: () => { automatic.current.cancel(); }, replan: () => {
+    if (busy || waiting || submissionPending || !selectedCandidate || !templateId) return;
+    automatic.current.start(formSignature);
+    void submit("prepare", undefined, true);
+  }, run: () => {
     if (primaryDisabled) return;
     if (nextAction === "recover" && submitted) { automatic.current.cancel(); void action(submitted, "retry"); }
     else if (nextAction === "preview" && submitted) void preview(submitted);
@@ -299,7 +346,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       if (linked.size) linkPreviews(linked);
       setBatchCount(linked.size);
       setBatchErrors(failed);
-    } catch (caught) { setError(caught instanceof Error ? caught.message : "批量提交暂未确认，请刷新核对后重试。"); }
+    } catch (caught) { setError(caught instanceof Error ? caught.message : "批量提交正在确认结果，不会重复扣费，请稍后刷新查看。"); }
     finally { setBusy(false); }
   };
   return <section id="editing-arrange" className={`${flow.step} ${flow.planning}`} aria-label="自动剪辑"><h2>{supportsMaterials ? "补充素材" : "文字编排"}</h2>
@@ -337,7 +384,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       const insufficient = available != null && available < minDistinctMotionGroups;
       const belowMinimumForPreview = belowMinimum(job);
       return <article key={job.id} data-planning-job={job.id}>
-      <div className={styles.taskHeading}><b>{labels[job.status === "running" ? job.stage : job.status] || "正在处理规划"}</b><time>{new Date(job.created_at).toLocaleString("zh-CN")}</time></div>
+      <div className={styles.taskHeading}><b>{planningJobProgress(job).label}</b><time>{new Date(job.created_at).toLocaleString("zh-CN")}</time></div>
+      {job.status !== "completed" && <EditingProgressSteps progress={planningJobProgress(job)} />}
       <details><summary>模型与输入版本</summary>
       <p className={styles.note}>模型：{job.model} · 网关：{job.gateway_host || "尚未固定"} · 转录版本 {job.base_transcript_sha256.slice(0, 12)}{job.text_status && ` · ${job.text_status === "user_corrected" ? "用户已校对文字，词点待验" : "转录文字待核对"}`}</p>
       </details>
@@ -410,8 +458,8 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
       {job.request_bytes !== null && <p>{job.catalog_group_count} 组原库 · 请求 {job.request_bytes.toLocaleString()} 字节 · 输入版本 {job.request_sha256?.slice(0, 12)}</p>}
       </details>
       {job.status === "prepared" && <>
-        <p className={styles.note}>此步骤尚未计模型费用。生成预览时会调用模型，费用按实际用量计算。</p>
-        {job.artifacts.filter(a => a.role === "request").map(a => <a key={a.id} href={a.url} download>下载已准备请求</a>)}
+        <p className={styles.note}>{isPriced(credits) ? `此步骤尚未计模型费用。生成预览时会调用模型，${creditPhrase(credits)}。` : `生成预览时会调用模型，${FREE_TRIAL_TEXT}。`}</p>
+        {job.artifacts.filter(a => a.role === "request").map(a => <a key={a.id} href={mediaUrl(a.url)} download>下载已准备请求</a>)}
         {!retiredTemplate(job) && <>
           {job.auto_preview_available && <label>
             <input type="checkbox" checked={!manualPreviewIds.includes(job.id)} disabled={busy || jobs.some(j => j.prepared_task_id === job.id)} onChange={event => {
@@ -420,7 +468,7 @@ export function EditingPlanning({ workspaceId, projectId, tasks, selected, onSel
             }} />
             编排通过后自动生成预览
           </label>}
-          <button type="button" disabled={busy || insufficient || !!job.template_style_blockers?.length || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>生成预览（计费）</button>
+          {renderShort && <ShortOfCredits credits={renderCredits} />}<button type="button" disabled={busy || !!renderShort || insufficient || !!job.template_style_blockers?.length || !job.execution_available || jobs.some(j => j.prepared_task_id === job.id)} onClick={() => void submit("generate", job)}>{billableLabel("生成预览", renderCredits)}</button>
           {insufficient && <p className={styles.note}>没有适用的成套动效，请核对项目备忘、素材或更换模板后重新准备。</p>}
           {!job.execution_available && <p className={styles.note}>模型执行尚未开放，当前仅完成请求准备。</p>}
         </>}

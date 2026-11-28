@@ -1,0 +1,250 @@
+/* 全站浅色（石膏灰白）手调层，2026-11-26 按设计稿 W3。
+   颜色的自动映射在 plaster.generated.css（scripts/plaster-gen.py 生成），本文件在其后加载，只放映射推不出来的部分：
+   色板变量、字体、页面底色、顶栏、主次按钮、输入框、弹窗浮层、几处原来按暗色手写的组件。
+   做法：灰底白卡——页面是带灰的石膏色，面板和卡片是纯白，层次靠明暗和极淡的阴影，不靠粗描边。
+   主按钮是墨色胶囊；熔光（红→橙→金）只用于焦点、当前导航、运行态和进度线。不用蓝、紫及蓝紫渐变。 */
+
+html.theme-plaster {
+  --ps-bg: #eeedea;
+  --ps-panel: #ffffff;
+  --ps-sunk: #f5f4f1;
+  --ps-sel: #e7e6e2;
+  --ps-hair: rgb(30 28 24 / 8%);
+  --ps-hair-2: rgb(30 28 24 / 14%);
+  --ps-text: #1a1a19;
+  --ps-muted: #5d5c59;
+  --ps-dim: #73726e;
+  --ps-ember: #e0571a;
+  --ps-ember-text: #b33f0c;
+  --ps-pill: #1a1a19;
+  --ps-lift: 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%);
+  --ps-float: 0 1px 2px rgb(30 28 24 / 6%), 0 30px 70px -24px rgb(30 28 24 / 30%);
+  --ps-ease: cubic-bezier(.22, .8, .2, 1);
+  --ps-sans: "Outfit", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+  --ps-serif: "Accent Serif", "Songti SC", "STSong", "Noto Serif SC", serif;
+  background: var(--ps-bg);
+  color: var(--ps-text);
+  color-scheme: light;
+  scrollbar-color: rgb(30 28 24 / 22%) transparent;
+}
+html.theme-plaster:where(:not([data-video-studio])) body {
+  font-family: var(--ps-sans);
+  background: var(--ps-bg);
+  color: var(--ps-text);
+  -webkit-font-smoothing: antialiased;
+}
+html.theme-plaster ::selection { background: rgb(224 87 26 / 20%); color: var(--ps-text); }
+html.theme-plaster:where(:not([data-video-studio])) :focus-visible { outline: 2px solid rgb(224 87 26 / 80%); outline-offset: 2px; }
+
+/* 标题：细字重、略收字距；强调词 .es-accent = 宋体 + 熔光下划线 */
+html.theme-plaster:where(:not([data-video-studio])) h1 { font-weight: 300; letter-spacing: -.01em; }
+html.theme-plaster:where(:not([data-video-studio])) h2 { font-weight: 400; letter-spacing: -.005em; }
+html.theme-plaster:where(:not([data-video-studio])) h3 { font-weight: 500; }
+html.theme-plaster .es-accent { font-family: var(--ps-serif); font-weight: 500; background: linear-gradient(transparent 88%, rgb(224 87 26 / 75%) 88%, rgb(233 180 76 / 75%) 94%, transparent 94%); }
+html.theme-plaster:where(:not([data-video-studio])) :is(time, [class*="count" i], [class*="credit" i], [class*="stat" i] strong) { font-variant-numeric: tabular-nums; }
+html.theme-plaster:where(:not([data-video-studio])) :is(b, strong, th) { font-weight: 500; }
+html.theme-plaster:where(:not([data-video-studio])) svg.lucide { stroke-width: 1.6; }
+
+/* 页面结构容器不画底色，露出石膏底；面板和卡片才是白色 */
+html.theme-plaster:where(:not([data-video-studio])) :is(.app-shell, .app-shell__body, .main-content, .main-content--wide, .tool-market-page, .focus-home,
+  .commerce-showcase, .commerce-gallery, .commerce-reviews, .home-showcase-footer, .auth-page, .content-page,
+  .workspace-page, .workspace-main, [class^="_page_"], [class*=" _page_"]) {
+  background-color: transparent;
+  background-image: none;
+}
+
+/* ---------- 顶栏：半透明石膏色 + 模糊 + 发丝线 ---------- */
+html.theme-plaster:where(:not([data-video-studio])) .top-nav {
+  color: var(--ps-text);
+  background: rgb(238 237 234 / 82%);
+  border-bottom: 1px solid var(--ps-hair);
+  box-shadow: none;
+  -webkit-backdrop-filter: blur(20px) saturate(1.2);
+  backdrop-filter: blur(20px) saturate(1.2);
+}
+html.theme-plaster .app-shell--home .top-nav[data-transparent="true"] { background: transparent; border-color: transparent; -webkit-backdrop-filter: none; backdrop-filter: none; }
+html.theme-plaster:where(:not([data-video-studio])) .brand-lockup .brand-copy strong { color: var(--ps-text); }
+html.theme-plaster:where(:not([data-video-studio])) .brand-lockup .brand-copy small { color: var(--ps-dim); }
+html.theme-plaster:where(:not([data-video-studio])) .brand-mark { background: transparent; border: 0; box-shadow: none; }
+html.theme-plaster:where(:not([data-video-studio])) .brand-mark::before, html.theme-plaster:where(:not([data-video-studio])) .brand-mark :is(i, b) { display: none; }
+html.theme-plaster:where(:not([data-video-studio])) :is(.top-nav__brand, .brand-lockup) { white-space: nowrap; }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav :is(.main-nav > a, .nav-menu__trigger) { color: var(--ps-muted); background: transparent; }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav :is(.main-nav > a, .nav-menu__trigger):is(:hover, .active) { color: var(--ps-text); background: transparent; }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav :is(.main-nav > a, .nav-menu__trigger)::after { background: var(--ps-ember); height: 1.5px; }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav :is(.usage-pill, .icon-button, .user-menu, .mobile-tool-entry, .announcement-center__trigger) { color: var(--ps-muted); background: transparent; border-color: transparent; box-shadow: none; }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav :is(.usage-pill, .icon-button, .user-menu, .mobile-tool-entry, .announcement-center__trigger):hover { color: var(--ps-text); background: rgb(255 255 255 / 70%); border-color: var(--ps-hair); }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav :is(.announcement-center__trigger, .usage-pill) svg { color: currentColor; }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav .task-trigger { color: var(--ps-text); background: var(--ps-panel); border: 1px solid var(--ps-hair-2); border-radius: 999px; box-shadow: none; }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav .task-trigger:hover { color: #fff; background: var(--ps-pill); border-color: var(--ps-pill); }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav .task-trigger i { color: #fff; background: var(--ps-ember); }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav .avatar { color: var(--ps-text); background: var(--ps-sel); }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav :is(.nav-tool-link:hover, .nav-tool-link.is-active) { background: var(--ps-sunk); }
+html.theme-plaster:where(:not([data-video-studio])) .top-nav :is(.nav-tool-link__hot, .main-nav__flame) { color: var(--ps-ember); }
+html.theme-plaster:where(:not([data-video-studio])) .nav-mega {
+  color: var(--ps-text);
+  background-color: rgb(255 255 255 / 94%);
+  border: 1px solid var(--ps-hair);
+  border-radius: 22px;
+  box-shadow: var(--ps-float);
+  -webkit-backdrop-filter: blur(24px) saturate(1.2);
+  backdrop-filter: blur(24px) saturate(1.2);
+}
+
+/* ---------- 按钮：主按钮 = 墨色胶囊，次按钮 = 白底细边胶囊 ---------- */
+html.theme-plaster:where(:not([data-video-studio])) :is(.primary-button, .auth-button--primary, .commerce-button) {
+  border-radius: 999px;
+  border-color: transparent;
+  background: var(--ps-pill);
+  color: #fff;
+  font-weight: 500;
+  box-shadow: 0 1px 2px rgb(30 28 24 / 12%), 0 10px 22px -12px rgb(30 28 24 / 45%);
+  transition: transform .2s var(--ps-ease), box-shadow .3s var(--ps-ease), background .2s;
+}
+html.theme-plaster:where(:not([data-video-studio])) :is(.primary-button, .auth-button--primary, .commerce-button):hover:not(:disabled) { transform: translateY(-1px); background: #000; color: #fff; box-shadow: 0 1px 2px rgb(30 28 24 / 14%), 0 14px 28px -12px rgb(30 28 24 / 50%); }
+html.theme-plaster:where(:not([data-video-studio])) :is(.primary-button, .auth-button--primary, .commerce-button):active:not(:disabled) { transform: translateY(0) scale(.98); }
+html.theme-plaster:where(:not([data-video-studio])) :is(.primary-button, .auth-button--primary, .commerce-button):disabled { background: var(--ps-sel); color: var(--ps-dim); box-shadow: none; }
+html.theme-plaster:where(:not([data-video-studio])) :is(.primary-button, .auth-button--primary, .commerce-button) svg { color: currentColor; }
+html.theme-plaster:where(:not([data-video-studio])) :is(.secondary-button, .auth-button--secondary, .icon-button) {
+  border-radius: 999px;
+  border: 1px solid var(--ps-hair-2);
+  background: var(--ps-panel);
+  color: var(--ps-text);
+  transition: border-color .2s, background .2s;
+}
+html.theme-plaster:where(:not([data-video-studio])) :is(.secondary-button, .auth-button--secondary, .icon-button):hover:not(:disabled) { border-color: rgb(30 28 24 / 28%); background: var(--ps-panel); }
+html.theme-plaster:where(:not([data-video-studio])) .text-button { padding: 0; border: 0; background: none; color: var(--ps-text); font: inherit; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+
+/* ---------- 输入框：白底、细边，聚焦时熔光描边 ---------- */
+html.theme-plaster:where(:not([data-video-studio])) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea:not([data-bare]), select) {
+  border-radius: 12px;
+  border: 1px solid var(--ps-hair-2);
+  background-color: var(--ps-panel);
+  color: var(--ps-text);
+  caret-color: var(--ps-ember);
+  transition: border-color .2s, box-shadow .2s;
+}
+html.theme-plaster:where(:not([data-video-studio])) :is(input, textarea:not([data-bare]), select)::placeholder { color: #8f8d88; }
+html.theme-plaster:where(:not([data-video-studio])) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea:not([data-bare]), select):hover { border-color: rgb(30 28 24 / 26%); }
+html.theme-plaster:where(:not([data-video-studio])) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea:not([data-bare]), select):focus {
+  outline: none;
+  border-color: rgb(224 87 26 / 70%);
+  box-shadow: 0 0 0 3px rgb(224 87 26 / 14%);
+}
+html.theme-plaster:where(:not([data-video-studio])) :is(.search-field, .textarea-wrap, .tool-search) :is(input, textarea) { border: 0; background: transparent; box-shadow: none; }
+html.theme-plaster:where(:not([data-video-studio])) :is(.search-field, .textarea-wrap, .tool-search) { border-radius: 999px; border: 1px solid var(--ps-hair-2); background: var(--ps-panel); }
+html.theme-plaster:where(:not([data-video-studio])) .textarea-wrap { border-radius: 16px; }
+html.theme-plaster:where(:not([data-video-studio])) :is(.search-field, .textarea-wrap, .tool-search):focus-within { border-color: rgb(224 87 26 / 70%); box-shadow: 0 0 0 3px rgb(224 87 26 / 14%); }
+html.theme-plaster:where(:not([data-video-studio])) :is(input[type="checkbox"], input[type="radio"], input[type="range"], progress) { accent-color: var(--ps-ember); }
+
+/* ---------- 弹窗、菜单、浮层：白色实底 + 柔和投影 ---------- */
+html.theme-plaster:where(:not([data-video-studio])) :is([role="dialog"]:not([data-es-plain]), dialog, .help-modal) {
+  border: 1px solid var(--ps-hair);
+  border-radius: 24px;
+  background-color: var(--ps-panel);
+  color: var(--ps-text);
+  box-shadow: var(--ps-float);
+}
+html.theme-plaster:where(:not([data-video-studio])) :is(.help-modal-backdrop, [class*="backdrop" i]:not([class*="backdrop-filter"])) {
+  background-color: rgb(30 28 24 / 28%);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+html.theme-plaster:where(:not([data-video-studio])) dialog::backdrop { background: rgb(30 28 24 / 28%); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+html.theme-plaster:where(:not([data-video-studio])) :is([role="menu"], [role="listbox"], [role="tooltip"], .home-search-results) {
+  border: 1px solid var(--ps-hair);
+  border-radius: 16px;
+  background-color: var(--ps-panel);
+  color: var(--ps-text);
+  box-shadow: var(--ps-float);
+}
+
+/* ---------- 小标题、空状态 ---------- */
+html.theme-plaster:where(:not([data-video-studio])) :is(.commerce-eyebrow, .legal-document__eyebrow) { font-size: 12px; font-weight: 400; letter-spacing: .08em; color: var(--ps-muted); }
+html.theme-plaster:where(:not([data-video-studio])) .commerce-eyebrow > span:empty { display: none; }
+html.theme-plaster:where(:not([data-video-studio])) :is(.empty-state, .announcement-center__empty) { color: var(--ps-muted); }
+html.theme-plaster:where(:not([data-video-studio])) .home-showcase-footer__filing { color: var(--ps-dim); }
+
+/* ---------- 账户页积分卡：白卡 + 一条熔光细线 ---------- */
+html.theme-plaster:where(:not([data-video-studio])) .balance-stat.balance-stat.balance-stat {
+  background: var(--ps-panel);
+  border: 1px solid var(--ps-hair);
+  border-top: 2px solid var(--ps-ember);
+  color: var(--ps-text);
+  box-shadow: var(--ps-lift);
+}
+html.theme-plaster:where(:not([data-video-studio])) .balance-stat.balance-stat.balance-stat :is(span, strong, small, p, b, em, a, button) { color: inherit; }
+html.theme-plaster:where(:not([data-video-studio])) .balance-stat.balance-stat.balance-stat.balance-stat :is(.stat-top, .stat-top > span, .stat-top button, span, small) { color: var(--ps-muted); }
+html.theme-plaster:where(:not([data-video-studio])) .balance-stat.balance-stat.balance-stat.balance-stat :is(strong, b) { color: var(--ps-text); }
+html.theme-plaster:where(:not([data-video-studio])) .balance-stat.balance-stat.balance-stat button { border-color: var(--ps-hair-2); background: var(--ps-panel); }
+
+/* ---------- 新人福利横幅与弹窗：节日红改成克制的白底 + 熔光细线 ---------- */
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-credits][data-welcome-credits] {
+  background: var(--ps-panel);
+  border-bottom: 1px solid var(--ps-hair);
+  box-shadow: inset 0 2px 0 var(--ps-ember);
+}
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-credits][data-welcome-credits]::before,
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-credits][data-welcome-credits]::after { display: none; }
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-credits][data-welcome-credits] :is(section, h2) { color: var(--ps-text); }
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-credits][data-welcome-credits] h2 { font-weight: 400; letter-spacing: -.01em; }
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-credits][data-welcome-credits] h2 span { font-family: var(--ps-sans); color: var(--ps-ember-text); }
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-credits][data-welcome-credits] p { color: var(--ps-muted); border-left-color: var(--ps-hair-2); }
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-credits][data-welcome-credits] button { border: 0; border-radius: 999px; background: var(--ps-pill); color: #fff; font-weight: 500; box-shadow: none; }
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-dialog][data-welcome-dialog] { color: var(--ps-text); }
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-dialog][data-welcome-dialog] header { background: var(--ps-sunk); color: var(--ps-text); border-bottom: 1px solid var(--ps-hair); box-shadow: inset 0 2px 0 var(--ps-ember); }
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-dialog][data-welcome-dialog] header::before,
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-dialog][data-welcome-dialog] header::after { display: none; }
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-dialog][data-welcome-dialog] h2 { font-weight: 400; color: var(--ps-text); }
+html.theme-plaster:where(:not([data-video-studio])) [data-welcome-dialog][data-welcome-dialog] :is(p, footer, summary) { color: var(--ps-muted); }
+
+/* ---------- 原来按暗色手写、没有浅色源样式的组件（任务恢复提示、积分不足提示、未登录任务抽屉） ---------- */
+html.theme-plaster :is(.job-recovery, .job-review-notice) { display: grid; gap: 12px; min-width: 0; padding: 14px; border: 1px solid var(--ps-hair); border-left: 2px solid var(--ps-ember); border-radius: 12px; background: var(--ps-sunk); }
+html.theme-plaster .job-recovery__copy { display: grid; gap: 6px; min-width: 0; }
+html.theme-plaster :is(.job-recovery, .job-review-notice) strong { color: var(--ps-text); font-size: 14px; font-weight: 500; }
+html.theme-plaster :is(.job-recovery, .job-review-notice) p { margin: 0; color: var(--ps-muted); font-size: 12px; line-height: 1.7; }
+html.theme-plaster .job-review-notice .job-review-notice__credits { color: var(--ps-dim); }
+html.theme-plaster .job-recovery__action { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; }
+html.theme-plaster .job-recovery__price { color: var(--ps-dim); font-size: 12px; }
+html.theme-plaster .job-recovery__price a { color: var(--ps-text); text-decoration: underline; text-underline-offset: 3px; }
+html.theme-plaster .job-recovery__error { color: var(--ps-ember-text) !important; }
+html.theme-plaster :is(.job-recovery, .job-review-notice) .primary-button { justify-self: start; display: inline-flex; align-items: center; gap: 6px; }
+html.theme-plaster .credit-shortfall { position: fixed; z-index: 120; left: 50%; bottom: 20px; display: flex; align-items: center; gap: 12px; width: min(560px, calc(100vw - 32px)); padding: 12px 12px 12px 16px; border: 1px solid var(--ps-hair); border-left: 2px solid var(--ps-ember); border-radius: 12px; background: var(--ps-panel); color: var(--ps-text); box-shadow: var(--ps-float); transform: translateX(-50%); }
+html.theme-plaster .credit-shortfall > svg { flex: 0 0 auto; color: var(--ps-ember); }
+html.theme-plaster .credit-shortfall p { display: grid; flex: 1; gap: 2px; min-width: 0; margin: 0; }
+html.theme-plaster .credit-shortfall strong { font-size: 13px; font-weight: 500; }
+html.theme-plaster .credit-shortfall span { color: var(--ps-dim); font-size: 12px; line-height: 1.6; }
+html.theme-plaster .credit-shortfall .primary-button { flex: 0 0 auto; white-space: nowrap; }
+html.theme-plaster .drawer-signed-out { display: grid; justify-items: start; gap: 12px; text-align: left; }
+html.theme-plaster .drawer-signed-out p { display: grid; gap: 4px; margin: 0; }
+html.theme-plaster .drawer-signed-out strong { color: var(--ps-text); font-size: 14px; }
+html.theme-plaster .drawer-signed-out span { color: var(--ps-dim); font-size: 12px; }
+@media (max-width: 620px) {
+  html.theme-plaster .credit-shortfall { flex-wrap: wrap; bottom: 12px; }
+  html.theme-plaster .credit-shortfall .primary-button { flex: 1 0 100%; justify-content: center; }
+  html.theme-plaster .credit-shortfall .icon-button { position: absolute; top: 8px; right: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.theme-plaster :is(.primary-button, .auth-button--primary, .commerce-button) { transition: none; }
+}
+
+/* 带图标的搜索框：外层画边框，里面的输入框不再叠一层（选择器要比通用输入框规则更具体） */
+html.theme-plaster:where(:not([data-video-studio])) :is(.search-field, .textarea-wrap, .tool-search) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea:not([data-bare])),
+html.theme-plaster:where(:not([data-video-studio])) :is(.search-field, .textarea-wrap, .tool-search) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]), textarea:not([data-bare])):is(:hover, :focus) {
+  border: 0; border-radius: 0; background: transparent; box-shadow: none;
+}
+
+/* 概览数字条：原来是一条带竖线分隔的长条，这里拆成浮在石膏底上的独立白卡 */
+html.theme-plaster:where(:not([data-video-studio])) :is(.overview-strip, .asset-overview, .job-stats) {
+  gap: 12px; overflow: visible; border: 0; background: transparent; box-shadow: none;
+}
+html.theme-plaster:where(:not([data-video-studio])) :is(.overview-strip, .asset-overview, .job-stats) > div {
+  border: 0; border-radius: 18px; background: var(--ps-panel); box-shadow: var(--ps-lift);
+}
+html.theme-plaster:where(:not([data-video-studio])) :is(.overview-strip, .asset-overview, .job-stats) > div:hover { background: var(--ps-panel); }
+
+/* 首页工具区：工具卡改成白卡；搜索框外层已有边框，里面的输入框去掉边框 */
+html.theme-plaster:where(:not([data-video-studio])) .focus-home .home-ai-toolbox__item { border: 0; background: var(--ps-panel); box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 6px 16px -10px rgb(30 28 24 / 14%); }
+html.theme-plaster:where(:not([data-video-studio])) .focus-home .home-ai-toolbox__item:hover { background: var(--ps-panel); box-shadow: var(--ps-lift); }
+html.theme-plaster:where(:not([data-video-studio])) .home-command :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])),
+html.theme-plaster:where(:not([data-video-studio])) .home-command :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"])):is(:hover, :focus) { border: 0; background: transparent; box-shadow: none; }

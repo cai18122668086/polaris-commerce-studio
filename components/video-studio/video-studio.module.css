@@ -194,10 +194,6 @@
 .editorFooter select { padding: 7px; font-size: 10px; color: #6b6274; border: 0; }
 .studio .generateButton { display: flex; align-items: center; justify-content: center; gap: 10px; flex: 1; max-width: 290px; min-width: 140px; height: 42px; border: 0; border-radius: 6px; background: #29262e; color: #fff; font-size: 13px; transition: background .18s, color .18s; }
 .studio .generateButton:hover { background: #d8ff00; color: #302b37; }
-.editLater { display: flex; align-items: center; flex-wrap: wrap; justify-content: center; gap: 6px; font-size: 10px; color: #6b6274; border: 1px solid var(--border); border-radius: 7px; padding: 8px; background: #fff; cursor: pointer; }
-.editLater i { width: 22px; height: 13px; background: #e8e2ee; border-radius: 9px; position: relative; }
-.editLater i::after { content: ""; position: absolute; height: 9px; width: 9px; border-radius: 50%; background: #fff; left: 2px; top: 2px; }
-.editLater small { font-size: 8px; }
 .editorAside { border: 1px solid var(--border); border-radius: 9px; background: #fff; min-width: 0; display: flex; flex-direction: column; }
 .rightTabs { min-height: 65px; display: flex; border-bottom: 1px solid var(--border); align-items: stretch; padding: 0 13px; }
 .studio .rightTabs button { flex: 1; padding: 0 4px; position: relative; color: #6b6274; font-size: 12px; border: 0; background: transparent; white-space: nowrap; }
@@ -304,9 +300,9 @@
 .studio .assistantWelcome p, .studio .promptSuggestions button { color: #6b6274; }
 .studio .assistantComposer textarea::placeholder { color: #6b6274; }
 @media (min-width: 1700px) { .main { padding: 35px 48px 60px; } .featureCard > i { right: 22px; width: 78px; height: 78px; } .avatarGrid { grid-template-columns: repeat(5, minmax(0,1fr)); } .modalGrid { grid-template-columns: repeat(4, minmax(0,1fr)); } .editorBody { grid-template-columns: 280px minmax(0,1fr); } .portrait { height: calc(100dvh - 245px); } }
-@media (max-width: 1250px) { .main { padding: 27px 24px; } .workspace { grid-template-columns: 188px minmax(0,1fr); } .sidebar { padding-left: 11px; padding-right: 11px; } .featureCards { gap: 11px; } .studio .featureCard { padding: 19px 14px; } .featureCard h2 { font-size: 15px; } .featureCard p { font-size: 9px; } .featureCard > i { right: 5px; width: 54px; height: 54px; } .featureCard h2 small { display: none; } .avatarGrid { gap: 13px; } .avatarCaption { flex-wrap: wrap; gap: 4px; padding: 10px; } .avatarCaption span { font-size: 9px; } .editorHeader { gap: 15px; padding: 0 14px; } .projectName span, .autosave { display: none; } .projectName input { width: 130px; } .editorBody { padding: 14px; gap: 14px; grid-template-columns: minmax(185px,.85fr) minmax(0,1.15fr); } .editorFooter { padding: 15px 14px; gap: 12px; } .editLater small { display: none; } .rightContent { padding: 16px; } .editor { grid-template-columns: minmax(0,1.8fr) minmax(300px,1fr); gap: 10px; padding: 10px 10px 0; } .voiceParams { gap: 9px; } .portrait { min-height: 360px; } .copyList { grid-template-columns: repeat(2,minmax(0,1fr)); } .featureCard div > span { margin-top: 34px; } .worksGrid { grid-template-columns: repeat(3,minmax(0,1fr)); } .compactWorks { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+@media (max-width: 1250px) { .main { padding: 27px 24px; } .workspace { grid-template-columns: 188px minmax(0,1fr); } .sidebar { padding-left: 11px; padding-right: 11px; } .featureCards { gap: 11px; } .studio .featureCard { padding: 19px 14px; } .featureCard h2 { font-size: 15px; } .featureCard p { font-size: 9px; } .featureCard > i { right: 5px; width: 54px; height: 54px; } .featureCard h2 small { display: none; } .avatarGrid { gap: 13px; } .avatarCaption { flex-wrap: wrap; gap: 4px; padding: 10px; } .avatarCaption span { font-size: 9px; } .editorHeader { gap: 15px; padding: 0 14px; } .projectName span, .autosave { display: none; } .projectName input { width: 130px; } .editorBody { padding: 14px; gap: 14px; grid-template-columns: minmax(185px,.85fr) minmax(0,1.15fr); } .editorFooter { padding: 15px 14px; gap: 12px; } .rightContent { padding: 16px; } .editor { grid-template-columns: minmax(0,1.8fr) minmax(300px,1fr); gap: 10px; padding: 10px 10px 0; } .voiceParams { gap: 9px; } .portrait { min-height: 360px; } .copyList { grid-template-columns: repeat(2,minmax(0,1fr)); } .featureCard div > span { margin-top: 34px; } .worksGrid { grid-template-columns: repeat(3,minmax(0,1fr)); } .compactWorks { grid-template-columns: repeat(2,minmax(0,1fr)); } }
 @media (max-width: 1000px) { .header { padding: 0 20px; } .headerActions { gap: 16px; } .brand b { font-size: 16px; } .brand em { font-size: 13px; } .workspace { grid-template-columns: 170px minmax(0,1fr); } .sidebar { padding: 22px 10px 14px; } .sidebar nav a, .sideHome { gap: 9px; padding: 0 11px; font-size: 12px; } .sidebar nav small { display: none; } .sidePromo { padding: 14px 10px; } .sidePromo > b { font-size: 9px; } .sidePromo > span { font-size: 8px; } .featureCards { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; } .studio .featureCard { min-height: 133px; } .featureCard div > span { margin-top: 22px; } .featureCard p { font-size: 10px; } .featureCard > i { right: 12px; bottom: 9px; width: 60px; height: 60px; } .featureCard h2 small { display: inline; } .sectionHeading > div { align-items: flex-start; flex-direction: column; gap: 6px; } .avatarGrid { grid-template-columns: repeat(3,minmax(0,1fr)); } .modalGrid { grid-template-columns: repeat(4,minmax(0,1fr)); } .editor { grid-template-columns: 1fr; } .editorBody { grid-template-columns: minmax(200px,.8fr) minmax(0,1.2fr); padding: 20px; gap: 20px; min-height: 490px; } .portrait { height: 450px; min-height: 0; } .editorAside { min-height: 430px; } .rightContent { min-height: 365px; } .assistantWelcome { padding: 10px 0 20px; } .promptSuggestions { max-width: none; grid-template-columns: repeat(3,1fr); margin-bottom: 20px; } .assistantComposer textarea { min-height: 80px; } .editorHeader { padding: 0 20px; gap: 25px; } .editorFooter { padding: 16px 20px; } .projectName span, .autosave { display: inline-flex; } .rightTabs { min-height: 50px; } .assistantAnswer { max-height: 280px; overflow: auto; } .compactWorks { grid-template-columns: repeat(4,minmax(0,1fr)); } .brandSmall b { font-size: 9px; } .brandSmall em { font-size: 9px; } }
-@media (max-width: 700px) { .header { height: 65px; padding: 0 15px; } .brand > img { width: 30px; height: 30px; } .brand { gap: 7px; } .brand b { font-size: 14px; } .brand em { font-size: 11px; } .brand small { font-size: 6px; letter-spacing: 1.6px; } .brandDivider { margin: 0 4px; font-size: 12px; } .previewBadge { display: none; } .returnSite { font-size: 10px; } .headerActions { gap: 12px; } .studio .accountAvatar { width: 27px; height: 27px; font-size: 12px; } .workspace { display: flex; flex-direction: column; min-height: calc(100dvh - 65px); } .sidebar { border-right: 0; border-bottom: 1px solid var(--border); padding: 9px 12px; flex-direction: row; align-items: center; gap: 7px; overflow-x: auto; } .sidebar .sideHome { height: 37px; margin: 0; padding: 0 12px; font-size: 11px; flex-shrink: 0; } .sidebar nav { display: flex; gap: 4px; } .sidebar nav a { height: 37px; padding: 0 12px; white-space: nowrap; font-size: 11px; } .sidebar svg { height: 14px; width: 14px; } .navGroup, .sidebarBottom { display: none; } .main { padding: 23px 17px 35px; } .studio h1 { font-size: 20px; } .welcomeRow, .pageHeading { gap: 12px; margin-bottom: 22px; } .welcomeRow p, .pageHeading p { font-size: 10px; } .studio .primaryButton, .studio .outlineButton { font-size: 11px; padding: 9px 12px; } .featureCards { gap: 10px; margin-bottom: 28px; } .studio .featureCard { padding: 17px 14px; min-height: 135px; } .featureCard h2 { font-size: 15px; } .featureCard p { font-size: 9px; } .featureCard > i { right: 6px; width: 47px; height: 47px; } .featureCard > i svg { width: 29px; height: 29px; } .featureCard h2 small { font-size: 6px; } .avatarGrid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; } .sectionHeading h2 { font-size: 16px; } .sectionHeading span { font-size: 9px; } .filterRow { gap: 8px; margin: 15px 0; } .search { width: 155px; height: 32px; padding: 0 8px; } .studio .pills button { padding: 5px 9px; font-size: 10px; } .voiceGrid { grid-template-columns: 1fr; } .voiceCard { padding: 15px; } .copyList { grid-template-columns: 1fr; } .worksGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } .editor { padding: 8px 8px 0; gap: 10px; } .editorHeader { gap: 15px; padding: 0 13px; min-height: 60px; flex-wrap: wrap; } .editorHeader .tabs { gap: 16px; } .editorHeader .tabs button { padding: 20px 0; font-size: 11px; } .projectName span, .autosave { display: none; } .projectName input { width: 105px; padding: 6px 7px; font-size: 9px; } .editorBody { grid-template-columns: minmax(0,.78fr) minmax(0,1.22fr); padding: 12px; gap: 12px; min-height: 470px; } .portrait { height: 360px; } .portraitBadge { font-size: 8px; padding: 4px 6px; left: 8px; top: 8px; } .portraitNote { font-size: 8px; } .studio .selectAvatar { font-size: 10px; gap: 5px; padding: 8px 5px; } .selectAvatar svg { width: 13px; } .studio .voiceSelector { padding: 10px 8px; gap: 7px; } .voiceSelectorIcon { height: 30px; width: 30px; border-radius: 7px; } .voiceSelectorIcon svg { width: 19px; } .voiceSelector b { font-size: 11px; } .voiceSelector small { font-size: 7px; } .voiceParams { padding: 12px 0; gap: 8px; } .voiceParams .speed { flex-basis: 100%; } .voiceParams label { min-width: 50px; gap: 4px; } .voiceParams input[type=range] { height: 20px; } .voiceParams label > span { font-size: 9px; } .voiceParams select { height: 26px; font-size: 9px; padding: 3px; } .scriptBox { min-height: 240px; } .scriptToolbar { padding: 9px; } .scriptToolbar > span { font-size: 9px; } .scriptBox textarea { font-size: 11px; min-height: 180px; padding: 0 10px 30px; } .copyActions { gap: 5px; } .studio .copyActions button { font-size: 8px; padding: 7px 4px; gap: 3px; } .copyActions svg { width: 10px; height: 10px; } .editorFooter { padding: 13px 12px; gap: 10px; min-height: 70px; } .editorFooter > label svg { display: none; } .editorFooter select { font-size: 9px; padding: 5px 1px; } .studio .generateButton { min-width: 100px; height: 37px; font-size: 11px; gap: 6px; } .generateButton svg { width: 15px; } .editLater { font-size: 8px; gap: 4px; } .editLater i { width: 20px; } .promptSuggestions { grid-template-columns: 1fr; } .rightContent { padding: 17px; } .assistantWelcome { padding: 12px 0 25px; } .assistantWelcome h2 { font-size: 19px; } .editorBrand { padding: 8px 12px; gap: 9px; font-size: 7px; } .brandSmall > img { width: 16px; height: 16px; } .brandSmall b, .brandSmall em { font-size: 8px; } .studio .dialog, .studio .dialogWide { width: calc(100vw - 24px); max-height: calc(100dvh - 30px); } .dialogInner { padding: 19px 17px 0; } .dialogFooter { padding: 15px 17px; margin: 20px -17px 0; } .dialogInner > header h2 { font-size: 16px; } .modalGrid { gap: 10px; } .studio .tabs { gap: 25px; } .studio .tabs > button { font-size: 12px; } .empty { min-height: 300px; } .toast { top: 12px; font-size: 11px; padding: 11px 15px; } .audioDrive { padding: 20px 0; gap: 14px; } .audioDrive h2 { font-size: 12px; } .audioDrive p { font-size: 9px; } .audioDrive > small { font-size: 8px; } .bigIcon { width: 55px; height: 55px; border-radius: 15px; } .bigIcon svg { width: 26px; } }
+@media (max-width: 700px) { .header { height: 65px; padding: 0 15px; } .brand > img { width: 30px; height: 30px; } .brand { gap: 7px; } .brand b { font-size: 14px; } .brand em { font-size: 11px; } .brand small { font-size: 6px; letter-spacing: 1.6px; } .brandDivider { margin: 0 4px; font-size: 12px; } .previewBadge { display: none; } .returnSite { font-size: 10px; } .headerActions { gap: 12px; } .studio .accountAvatar { width: 27px; height: 27px; font-size: 12px; } .workspace { display: flex; flex-direction: column; min-height: calc(100dvh - 65px); } .sidebar { border-right: 0; border-bottom: 1px solid var(--border); padding: 9px 12px; flex-direction: row; align-items: center; gap: 7px; overflow-x: auto; } .sidebar .sideHome { height: 37px; margin: 0; padding: 0 12px; font-size: 11px; flex-shrink: 0; } .sidebar nav { display: flex; gap: 4px; } .sidebar nav a { height: 37px; padding: 0 12px; white-space: nowrap; font-size: 11px; } .sidebar svg { height: 14px; width: 14px; } .navGroup, .sidebarBottom { display: none; } .main { padding: 23px 17px 35px; } .studio h1 { font-size: 20px; } .welcomeRow, .pageHeading { gap: 12px; margin-bottom: 22px; } .welcomeRow p, .pageHeading p { font-size: 10px; } .studio .primaryButton, .studio .outlineButton { font-size: 11px; padding: 9px 12px; } .featureCards { gap: 10px; margin-bottom: 28px; } .studio .featureCard { padding: 17px 14px; min-height: 135px; } .featureCard h2 { font-size: 15px; } .featureCard p { font-size: 9px; } .featureCard > i { right: 6px; width: 47px; height: 47px; } .featureCard > i svg { width: 29px; height: 29px; } .featureCard h2 small { font-size: 6px; } .avatarGrid { grid-template-columns: repeat(2,minmax(0,1fr)); gap: 12px; } .sectionHeading h2 { font-size: 16px; } .sectionHeading span { font-size: 9px; } .filterRow { gap: 8px; margin: 15px 0; } .search { width: 155px; height: 32px; padding: 0 8px; } .studio .pills button { padding: 5px 9px; font-size: 10px; } .voiceGrid { grid-template-columns: 1fr; } .voiceCard { padding: 15px; } .copyList { grid-template-columns: 1fr; } .worksGrid { grid-template-columns: repeat(2,minmax(0,1fr)); } .editor { padding: 8px 8px 0; gap: 10px; } .editorHeader { gap: 15px; padding: 0 13px; min-height: 60px; flex-wrap: wrap; } .editorHeader .tabs { gap: 16px; } .editorHeader .tabs button { padding: 20px 0; font-size: 11px; } .projectName span, .autosave { display: none; } .projectName input { width: 105px; padding: 6px 7px; font-size: 9px; } .editorBody { grid-template-columns: minmax(0,.78fr) minmax(0,1.22fr); padding: 12px; gap: 12px; min-height: 470px; } .portrait { height: 360px; } .portraitBadge { font-size: 8px; padding: 4px 6px; left: 8px; top: 8px; } .portraitNote { font-size: 8px; } .studio .selectAvatar { font-size: 10px; gap: 5px; padding: 8px 5px; } .selectAvatar svg { width: 13px; } .studio .voiceSelector { padding: 10px 8px; gap: 7px; } .voiceSelectorIcon { height: 30px; width: 30px; border-radius: 7px; } .voiceSelectorIcon svg { width: 19px; } .voiceSelector b { font-size: 11px; } .voiceSelector small { font-size: 7px; } .voiceParams { padding: 12px 0; gap: 8px; } .voiceParams .speed { flex-basis: 100%; } .voiceParams label { min-width: 50px; gap: 4px; } .voiceParams input[type=range] { height: 20px; } .voiceParams label > span { font-size: 9px; } .voiceParams select { height: 26px; font-size: 9px; padding: 3px; } .scriptBox { min-height: 240px; } .scriptToolbar { padding: 9px; } .scriptToolbar > span { font-size: 9px; } .scriptBox textarea { font-size: 11px; min-height: 180px; padding: 0 10px 30px; } .copyActions { gap: 5px; } .studio .copyActions button { font-size: 8px; padding: 7px 4px; gap: 3px; } .copyActions svg { width: 10px; height: 10px; } .editorFooter { padding: 13px 12px; gap: 10px; min-height: 70px; } .editorFooter > label svg { display: none; } .editorFooter select { font-size: 9px; padding: 5px 1px; } .studio .generateButton { min-width: 100px; height: 37px; font-size: 11px; gap: 6px; } .generateButton svg { width: 15px; } .promptSuggestions { grid-template-columns: 1fr; } .rightContent { padding: 17px; } .assistantWelcome { padding: 12px 0 25px; } .assistantWelcome h2 { font-size: 19px; } .editorBrand { padding: 8px 12px; gap: 9px; font-size: 7px; } .brandSmall > img { width: 16px; height: 16px; } .brandSmall b, .brandSmall em { font-size: 8px; } .studio .dialog, .studio .dialogWide { width: calc(100vw - 24px); max-height: calc(100dvh - 30px); } .dialogInner { padding: 19px 17px 0; } .dialogFooter { padding: 15px 17px; margin: 20px -17px 0; } .dialogInner > header h2 { font-size: 16px; } .modalGrid { gap: 10px; } .studio .tabs { gap: 25px; } .studio .tabs > button { font-size: 12px; } .empty { min-height: 300px; } .toast { top: 12px; font-size: 11px; padding: 11px 15px; } .audioDrive { padding: 20px 0; gap: 14px; } .audioDrive h2 { font-size: 12px; } .audioDrive p { font-size: 9px; } .audioDrive > small { font-size: 8px; } .bigIcon { width: 55px; height: 55px; border-radius: 15px; } .bigIcon svg { width: 26px; } }
 @media (max-width: 380px) { .returnSite { font-size: 9px; } .headerActions { gap: 8px; } .brand b { font-size: 12px; } .brand em { font-size: 10px; } .featureCard > i { opacity: .5; } .featureCard p { font-size: 8px; } .welcomeRow h1 { font-size: 18px; } .editorBody { grid-template-columns: 1fr; } .portraitColumn { width: 100%; align-items: center; } .portrait { width: 190px; height: 290px; } .studio .selectAvatar { width: 190px; } .scriptBox { min-height: 280px; } .scriptBox textarea { min-height: 220px; } .voiceParams .speed { flex-basis: auto; } .projectName input { width: 88px; } .editorHeader { gap: 11px; } }
 @media (prefers-reduced-motion: reduce) { .studio *, .studio *::before, .studio *::after { transition: none !important; animation: none !important; scroll-behavior: auto !important; } }
 .persistenceBody { border: 0; margin: 0; padding: 0; min-width: 0; }
@@ -460,7 +456,6 @@
 .editorFooter { margin-top: auto; min-height: 80px; flex-shrink: 0; padding: 16px 20px; background: #fff; box-shadow: 0 -4px 16px #48335805; }
 .studio .generateButton { max-width: none; height: 46px; min-width: 140px; font-size: 14px; font-weight: 600; border-radius: 8px; }
 .studio .editorFooter select { color: #71627c; font-size: 11px; }
-.editLater { color: #8b7c97; font-size: 11px; }
 .rightTabs { min-height: 70px; padding: 12px; gap: 4px; flex-shrink: 0; align-items: center; }
 .studio .rightTabs button { display: flex; align-items: center; justify-content: center; gap: 4px; min-height: 37px; border-radius: 8px; padding: 7px; color: #73657f; font-size: 12px; }
 .studio .rightTabs .activeRightTab { color: #fff; background: #76598c; font-weight: 600; box-shadow: 0 3px 8px #77598c25; }
@@ -473,7 +468,7 @@
 .rightContent > .workList, .rightContent > .compactList { max-height: 100%; overflow-y: auto; }
 .generationReview p, .helpContent p, .previewText { color: #65556f; font-size: 13px; }
 @media (min-width: 1700px) { .editorBody { grid-template-columns: 280px minmax(0,1fr); } .portrait { max-height: 650px; } }
-@media (max-width: 1300px) { .studio .editor { grid-template-columns: minmax(0,1.7fr) minmax(330px,1fr); padding: 12px 12px 0; gap: 12px; } .editorBody { grid-template-columns: minmax(150px,.7fr) minmax(0,1.3fr); padding: 16px; gap: 14px; } .projectName { margin-left: 0; } .projectName span { display: none; } .editorHeader > select { max-width: 95px; } .projectName input { width: 120px; } .rightTabs { padding: 10px; } .studio .rightTabs button { font-size: 11px; padding: 6px 4px; } .rightContent { padding: 12px; } .editorFooter { padding: 15px; gap: 10px; } .editLater { display: none; } }
+@media (max-width: 1300px) { .studio .editor { grid-template-columns: minmax(0,1.7fr) minmax(330px,1fr); padding: 12px 12px 0; gap: 12px; } .editorBody { grid-template-columns: minmax(150px,.7fr) minmax(0,1.3fr); padding: 16px; gap: 14px; } .projectName { margin-left: 0; } .projectName span { display: none; } .editorHeader > select { max-width: 95px; } .projectName input { width: 120px; } .rightTabs { padding: 10px; } .studio .rightTabs button { font-size: 11px; padding: 6px 4px; } .rightContent { padding: 12px; } .editorFooter { padding: 15px; gap: 10px; } }
 @media (max-width: 1050px) { .studio .editor { height: auto; min-height: 0; grid-template-columns: 1fr; padding-bottom: 12px; } .editorBody { min-height: 450px; grid-template-columns: minmax(180px,.65fr) minmax(0,1.35fr); overflow: visible; } .portrait { max-height: 470px; } .editorAside { min-height: 470px; } .editorAside .rightContent { overflow: visible; } .rightContent { min-height: 370px; } .editorFooter { position: sticky; bottom: 0; z-index: 10; } }
 @media (max-width: 600px) { .editorHeader { gap: 8px; padding: 10px 12px; } .editorHeader .back { margin-right: 2px; } .editorHeader .tabs { gap: 2px; } .studio .editorHeader .tabs button { font-size: 11px; padding: 8px 10px; } .projectName { flex: 1; min-width: 100px; } .projectName input { width: 100%; font-size: 11px; } .editorHeader > select { max-width: 125px; flex: 1; font-size: 11px; } .autosave { display: inline-flex; font-size: 10px; margin-left: auto; } .editorBody { grid-template-columns: 1fr; min-height: 0; padding: 12px; } .portraitColumn { display: grid; grid-template-columns: 88px minmax(0,1fr); column-gap: 15px; align-items: center; } .portrait { grid-row: 1 / 3; width: 88px; aspect-ratio: 9 / 13; border-radius: 7px; } .portraitBadge { display: none; } .portraitRatio { font-size: 9px; } .studio .selectAvatar { margin: 0; padding: 11px; font-size: 12px; } .portraitNote { margin: 0; font-size: 10px; } .voiceSelector b { font-size: 13px; } .voiceSelector small { font-size: 10px; } .scriptBox { min-height: 300px; } .scriptBox textarea { min-height: 240px; font-size: 14px; } .copyActions { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); } .studio .copyActions button { font-size: 11px; padding: 9px 6px; } .studio .voiceParams label > span { font-size: 11px; } .studio .voiceParams select { font-size: 11px; } .editorFooter { padding: 13px 12px; gap: 8px; } .editorFooter > label { max-width: 115px; } .studio .editorFooter select { width: 100%; font-size: 10px; padding: 4px 0; } .studio .generateButton { font-size: 13px; min-height: 42px; } .editorAside { min-height: 520px; } .rightContent { padding: 14px; min-height: 440px; } .studio .rightTabs button { font-size: 12px; } }
 
@@ -486,8 +481,9 @@
   .editorHeader > select { order: 4; flex: 1 0 140px; min-width: 140px; max-width: none; }
   .editorHeader > .textButton { order: 5; }
   .editorHeader > .autosave { order: 6; }
-  .studio .editor { padding-bottom: 94px; }
-  .editorFooter { position: fixed; bottom: 0; left: 12px; right: 12px; z-index: 30; border: 1px solid #e1d9e8; border-radius: 11px 11px 0 0; box-shadow: 0 -5px 22px #38254916; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  /* 底栏贴在编辑卡底部（sticky），滚到文案框末尾时停在框下方，不再盖住字数计数（F-16） */
+  .studio .editor { padding-bottom: 12px; }
+  .editorFooter { position: sticky; bottom: 0; z-index: 30; border: 1px solid #e1d9e8; border-radius: 11px 11px 0 0; box-shadow: 0 -5px 22px #38254916; padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
 }
 
 .workActions { display:flex; align-items:center; justify-content:space-between; gap:10px; margin-top:12px; padding-top:10px; border-top:1px solid #f1edf5; }
@@ -576,3 +572,998 @@
 @media(max-width:640px) { .editingStudio .projectName { flex:1 1 100%; min-width:0; } .editingStudio .editorHeader>select { flex:1; min-width:0; max-width:none; } }
 
 .editingStudio{background:#fff;color:#333}.editingStudio>.persistenceBody>.header{height:56px;min-height:56px;padding:10px 16px;border-bottom:1px solid #e8e8e8;box-shadow:none;background:white}.editingTitle{display:flex;gap:24px;align-items:center;font-size:14px}.editingTitle button{background:#f0f0f0!important;color:#666!important;border-radius:5px;padding:7px 14px}.editingStudio .previewBadge{display:none}.editingStudio .workspace{min-height:calc(100dvh - 56px);background:#fff}.editingStudio .main{padding:18px 20px 0}.editingProject{font-size:11px;color:#888;margin:0 310px 14px 0}.editingProject>summary{cursor:pointer}.editingProject[open]>.editorHeader{margin-top:12px;flex-wrap:wrap}.editingStudio .headerActions{gap:12px}.editingStudio .accountAvatar{background:#f1f1f1;color:#666}.editingStudio .returnSite{font-size:11px;color:#888}@media(max-width:850px){.editingProject{margin-right:0}}@media(max-width:540px){.editingStudio .main{padding:12px}.editingStudio .returnSite{display:none}}
+
+/* 首页三入口与导航分组：细线、留白、单一强调，不用渐变与图标色块 */
+.entryCards { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; margin-bottom: 40px; }
+@media (max-width: 1280px) { .entryCards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.studio .entryCard { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; min-height: 168px; padding: 22px 22px 20px; text-align: left; background: #fff; border: 1px solid var(--border); border-radius: 12px; transition: border-color .18s, box-shadow .18s; }
+.studio .entryCard:hover { border-color: #cfc6d9; box-shadow: 0 8px 24px #2a20330a; }
+.studio .entryCard:focus-visible { outline: 2px solid #563c72; outline-offset: 2px; }
+.studio .entryPrimary { border-color: #b9aac8; }
+.entryStep { font-size: 11px; color: #86768f; }
+.entryCard h2 { font-size: 18px; font-weight: 600; color: #241b2c; display: flex; align-items: baseline; gap: 8px; }
+.entryCard h2 small { font-size: 11px; font-weight: 500; color: #563c72; }
+.entryCard p { font-size: 12px; line-height: 1.7; color: #746b7d; max-width: 28ch; }
+.entryGo { margin-top: auto; display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: #563c72; }
+.navSection + .navSection { margin-top: 26px; }
+@media (max-width: 900px) { .entryCards { grid-template-columns: minmax(0, 1fr); } .studio .entryCard { min-height: 0; } }
+@media (max-width: 700px) { .navSection { display: flex; align-items: center; gap: 4px; flex-shrink: 0; } .navSection + .navSection { margin-top: 0; padding-left: 8px; border-left: 1px solid var(--border); } }
+
+/* 项目步骤条：一行细线，当前步加粗，完成步用对勾，不用色块胶囊 */
+.projectSteps { margin: 0 0 22px; }
+.projectSteps ol { list-style: none; display: flex; align-items: center; gap: 0; margin: 0; padding: 0; border-bottom: 1px solid var(--border); }
+.projectSteps li { display: flex; align-items: center; }
+.projectSteps li + li::before { content: ""; width: 28px; height: 1px; background: var(--border); margin: 0 6px; }
+.studio .projectSteps :is(button, a) { display: inline-flex; align-items: center; gap: 8px; padding: 12px 6px; background: none; border: 0; color: #8a7f94; font-size: 13px; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.studio .projectSteps :is(button, a):hover { color: #3a2e45; }
+.studio .projectSteps :is(button, a):focus-visible { outline: 2px solid #563c72; outline-offset: 2px; }
+.stepIndex { display: inline-grid; place-items: center; width: 20px; height: 20px; border: 1px solid #d6cfdd; border-radius: 50%; font-size: 11px; }
+.projectSteps small { font-size: 11px; color: #563c72; }
+.studio .step_current :is(button, a) { color: #241b2c; font-weight: 600; border-bottom-color: #563c72; }
+.step_current .stepIndex { border-color: #563c72; color: #563c72; }
+.studio .step_done :is(button, a) { color: #5c5266; }
+.step_done .stepIndex { border-color: #5c5266; color: #5c5266; }
+.srOnly { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.editorMain > .projectSteps { margin: 0; padding: 0 18px; }
+@media (max-width: 700px) { .projectSteps ol { overflow-x: auto; } .projectSteps li + li::before { width: 12px; margin: 0 2px; } .studio .projectSteps :is(button, a) { font-size: 12px; padding: 10px 4px; } }
+
+/* 任务中心：页头文字入口 + 细线弹出层 */
+.taskCenter { position: relative; }
+.studio .taskCenterButton { display: inline-flex; align-items: center; gap: 6px; height: 32px; padding: 0 10px; background: none; border: 1px solid var(--border); border-radius: 8px; color: #4a3f55; font-size: 13px; }
+.studio .taskCenterButton:hover { border-color: #cfc6d9; }
+.studio .taskCenterButton:focus-visible { outline: 2px solid #563c72; outline-offset: 2px; }
+.taskCount { font-size: 12px; color: #563c72; font-variant-numeric: tabular-nums; }
+.taskPanel { position: absolute; right: 0; top: calc(100% + 8px); z-index: 40; width: 340px; max-width: calc(100vw - 24px); background: #fff; border: 1px solid var(--border); border-radius: 12px; box-shadow: 0 18px 40px #2a20331a; }
+.taskPanel header { display: flex; align-items: baseline; justify-content: space-between; padding: 14px 16px 10px; border-bottom: 1px solid var(--border); }
+.taskPanel header b { font-size: 14px; }
+.taskPanel header span { font-size: 12px; color: #86768f; }
+.taskPanel ul { list-style: none; margin: 0; padding: 6px 0; max-height: 320px; overflow-y: auto; }
+.taskPanel li a { display: flex; justify-content: space-between; gap: 12px; padding: 10px 16px; color: #2b2233; font-size: 13px; }
+.taskPanel li a:hover { background: #f8f6fb; }
+.taskTitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.taskStatus { flex-shrink: 0; color: #86768f; font-size: 12px; }
+.taskAttention { flex-shrink: 0; color: #563c72; font-size: 12px; font-weight: 600; }
+.taskEmpty, .taskPanel > p { padding: 18px 16px; font-size: 13px; color: #86768f; }
+.taskPanel footer { display: grid; gap: 10px; padding: 12px 16px 14px; border-top: 1px solid var(--border); font-size: 12px; color: #746b7d; }
+.taskPanel footer label { display: flex; gap: 8px; align-items: center; }
+.taskPanel footer a { color: #563c72; }
+@media (max-width: 700px) { .studio .taskCenterButton { height: 28px; padding: 0 8px; font-size: 12px; } .taskPanel { position: fixed; left: 12px; right: 12px; top: 72px; width: auto; } }
+
+@font-face { font-family: "Polaris Outfit"; src: url("/video-studio/fonts/outfit.woff2") format("woff2"); font-weight: 200 600; font-display: swap; }
+@font-face { font-family: "Polaris Accent Serif"; src: url("/video-studio/fonts/serif-accent.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+.creditBalance { display: inline-flex; align-items: center; height: 32px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; font-size: 12px; color: #6f6879; font-variant-numeric: tabular-nums; white-space: nowrap; }
+@media (max-width: 430px) { .creditBalance { height: 28px; padding: 0 8px; font-size: 11px; } }
+/* ---------- 熔光手调层（对齐原型 studio.html）----------
+   自动换色在文件末尾的 ember-dark 块里；这里补自动映射做不到的气氛：近黑底上的暖色虚光、
+   玻璃页头和侧栏、接近白色的主按钮。用 html.theme-ember 前缀，优先级高于自动块，不受顺序影响。
+   不用蓝、紫；ember 只用于焦点、进行中和少量强调。 */
+:global(html.theme-ember) .studio { --ink: #edeae4; --muted: rgb(237 234 228 / 62%); --border: rgb(255 255 255 / 9%); --ember: #f07a2b; background: #0b0b0b; color: var(--ink); isolation: isolate; }
+:global(html.theme-ember) .studio::before { content: ""; position: fixed; inset: -20%; z-index: -1; pointer-events: none; filter: blur(30px);
+  background: radial-gradient(40% 34% at 82% 6%, rgb(200 52 10 / 26%), transparent 70%), radial-gradient(36% 32% at 8% 96%, rgb(233 180 76 / 10%), transparent 72%); }
+:global(html.theme-ember) .header { background: rgb(11 11 11 / 72%); border-bottom: 1px solid var(--border); -webkit-backdrop-filter: blur(24px) saturate(1.2); backdrop-filter: blur(24px) saturate(1.2); position: sticky; top: 0; z-index: 20; }
+:global(html.theme-ember) .sidebar { background: rgb(17 16 15 / 55%); border-right: 1px solid var(--border); }
+:global(html.theme-ember) .sideHome, :global(html.theme-ember) .sidebar nav a { color: rgb(237 234 228 / 62%); }
+:global(html.theme-ember) .sidebar a:hover { background: rgb(255 255 255 / 4%); color: var(--ink); }
+:global(html.theme-ember) .sidebar a.activeNav { background: rgb(255 255 255 / 7%); color: var(--ink); box-shadow: inset 2px 0 0 var(--ember); }
+:global(html.theme-ember) .sidebar a.activeNav svg { color: var(--ember); }
+:global(html.theme-ember) .navGroup { color: rgb(237 234 228 / 42%); letter-spacing: .08em; }
+:global(html.theme-ember) .sidePromo { background: rgb(255 255 255 / 3%); border: 1px solid var(--border); }
+:global(html.theme-ember) .previewBadge i { background: var(--ember); }
+:global(html.theme-ember) .studio .primaryButton, :global(html.theme-ember) .studio .generateButton { background: #edeae4; border-color: #edeae4; color: #0b0b0b; border-radius: 999px; box-shadow: none; }
+:global(html.theme-ember) .studio .primaryButton:hover:not(:disabled), :global(html.theme-ember) .studio .generateButton:hover:not(:disabled) { background: #ffffff; border-color: #ffffff; color: #0b0b0b; box-shadow: 0 10px 30px -12px rgb(240 122 43 / 55%); }
+:global(html.theme-ember) .studio .outlineButton { background: transparent; border-color: rgb(255 255 255 / 14%); color: var(--ink); border-radius: 999px; }
+:global(html.theme-ember) .studio .outlineButton:hover:not(:disabled) { background: rgb(255 255 255 / 5%); border-color: rgb(255 255 255 / 24%); }
+:global(html.theme-ember) .studio input, :global(html.theme-ember) .studio textarea, :global(html.theme-ember) .studio select { background: rgb(255 255 255 / 3%); border-color: var(--border); color: var(--ink); }
+:global(html.theme-ember) .studio input::placeholder, :global(html.theme-ember) .studio textarea::placeholder { color: rgb(237 234 228 / 38%); }
+:global(html.theme-ember) .studio input:focus, :global(html.theme-ember) .studio textarea:focus, :global(html.theme-ember) .studio select:focus { border-color: rgb(240 122 43 / 70%); box-shadow: 0 0 0 3px rgb(240 122 43 / 14%); }
+:global(html.theme-ember) .studio button:focus-visible, :global(html.theme-ember) .studio a:focus-visible { outline: 2px solid rgb(240 122 43 / 85%); outline-offset: 2px; }
+:global(html.theme-ember) .studioIntro { background: rgb(17 16 15 / 64%); border: 1px solid var(--border); box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 30px 60px -30px rgb(0 0 0 / 70%); -webkit-backdrop-filter: blur(30px); backdrop-filter: blur(30px); }
+:global(html.theme-ember) .studioIntro::before, :global(html.theme-ember) .studioIntro::after { opacity: .35; }
+:global(html.theme-ember) .studioIntro mark { background: none; color: var(--ember); }
+:global(html.theme-ember) .studioIntro p, :global(html.theme-ember) .introEyebrow { color: rgb(237 234 228 / 62%); }
+:global(html.theme-ember) .entryCard { background: rgb(17 16 15 / 55%); border-color: var(--border); }
+:global(html.theme-ember) .entryCard:hover { border-color: rgb(255 255 255 / 20%); background: rgb(24 23 22 / 70%); }
+:global(html.theme-ember) .entryPrimary { border-color: rgb(240 122 43 / 45%); }
+
+:global(html.theme-ember) .studio { font-family: "Polaris Outfit", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; -webkit-font-smoothing: antialiased; }
+:global(html.theme-ember) .studio h1, :global(html.theme-ember) .studio h2 { font-weight: 500; letter-spacing: -.01em; }
+:global(html.theme-ember) .studioIntro mark { font-family: "Polaris Accent Serif", "Songti SC", "STSong", "Noto Serif SC", serif; font-weight: 500; }
+:global(html.theme-ember) .brand small, :global(html.theme-ember) .introEyebrow { letter-spacing: .22em; color: rgb(237 234 228 / 42%); }
+/* 内页质感：创作页形象位的暗化配图、任务面板与积分标签的玻璃质感 */
+.portraitEmpty { position: relative; overflow: hidden; }
+.portraitEmpty > :not(:first-child) { position: relative; z-index: 1; }
+:global(html.theme-ember) .portraitEmpty b { color: #edeae4; }
+:global(html.theme-ember) .portraitEmpty span { color: rgb(237 234 228 / 60%); }
+:global(html.theme-ember) .taskPanel { background: rgb(17 16 15 / 86%); border: 1px solid rgb(255 255 255 / 10%); box-shadow: inset 0 1px 0 rgb(255 255 255 / 6%), 0 30px 60px -24px rgb(0 0 0 / 80%); -webkit-backdrop-filter: blur(24px); backdrop-filter: blur(24px); border-radius: 16px; }
+:global(html.theme-ember) .taskPanel li a:hover { background: rgb(255 255 255 / 5%); }
+:global(html.theme-ember) .taskAttention { color: #f07a2b; }
+:global(html.theme-ember) .creditBalance { border-color: rgb(255 255 255 / 12%); color: rgb(237 234 228 / 72%); background: rgb(255 255 255 / 3%); border-radius: 999px; }
+:global(html.theme-ember) .studio .taskCenterButton { border-radius: 999px; }
+/* 手机端不允许整页横向拖动：页面横向裁切，提示框不超出屏幕，横滑导航自己吃掉滑动手势。 */
+@media (max-width: 860px) {
+  :global(html):has(.studio), :global(body):has(.studio) { overflow-x: clip; }
+  .studio { overflow-x: clip; max-width: 100vw; }
+  .studio .toast { max-width: calc(100vw - 24px); }
+  .sidebar nav, .sidebar [class*="navSection"] { overscroll-behavior-x: contain; }
+  .studio .taskCenterButton { white-space: nowrap; flex-shrink: 0; }
+}
+@media (max-width: 430px) { .returnSite { display: none !important; } }
+
+/* ---------- 石膏灰白（html.theme-plaster，2026-11-27）：视频空间与正式站统一 ----------
+   自动映射在文件末尾的 plaster 块，这里只放映射推不出来的：字体、石膏底色、半透明顶栏、侧栏、
+   墨色胶囊主按钮、白卡 + 淡投影、熔光焦点。和 app/plaster.css 同一套色板（--ps-*）。 */
+:global(html.theme-plaster) .studio { --accent: #1a1a19; --ink: #1a1a19; --muted: #5d5c59; --border: rgb(30 28 24 / 10%); --soft: #f5f4f1;
+  font-family: "Outfit", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; background: #eeedea; color: #1a1a19; -webkit-font-smoothing: antialiased; }
+:global(html.theme-plaster) .studio h1 { font-weight: 300; letter-spacing: -.01em; }
+:global(html.theme-plaster) .studio h2 { font-weight: 400; letter-spacing: -.005em; }
+:global(html.theme-plaster) .studio h3 { font-weight: 500; }
+:global(html.theme-plaster) .studio :is(b, strong) { font-weight: 500; }
+:global(html.theme-plaster) .studio button:focus-visible, :global(html.theme-plaster) .studio a:focus-visible { outline: 2px solid rgb(224 87 26 / 80%); outline-offset: 2px; }
+:global(html.theme-plaster) .studio :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), textarea, select) { border: 1px solid rgb(30 28 24 / 14%); border-radius: 12px; background: #fff; color: #1a1a19; caret-color: #e0571a; }
+:global(html.theme-plaster) .studio :is(input, textarea, select):focus { outline: none; border-color: rgb(224 87 26 / 70%); box-shadow: 0 0 0 3px rgb(224 87 26 / 14%); }
+:global(html.theme-plaster) .studio :is(input[type="checkbox"], input[type="radio"], input[type="range"], progress) { accent-color: #e0571a; }
+:global(html.theme-plaster) .studio input::placeholder, :global(html.theme-plaster) .studio textarea::placeholder { color: #8f8d88; }
+
+/* 顶栏：半透明石膏色 + 模糊 + 发丝线（同正式站顶栏） */
+:global(html.theme-plaster) .header { background: rgb(238 237 234 / 82%); border-bottom: 1px solid rgb(30 28 24 / 8%); -webkit-backdrop-filter: blur(20px) saturate(1.2); backdrop-filter: blur(20px) saturate(1.2); }
+:global(html.theme-plaster) .brand b { font-weight: 500; }
+:global(html.theme-plaster) :is(.brand em, .brand small, .brandDivider, .previewBadge, .returnSite) { color: #73726e; }
+:global(html.theme-plaster) .returnSite:hover { color: #1a1a19 !important; }
+:global(html.theme-plaster) .studio .accountAvatar { border: 0; background: #e7e6e2; color: #1a1a19; }
+
+/* 侧栏：不画底色，露出石膏底；当前项 = 白色胶囊 + 淡投影 */
+:global(html.theme-plaster) .sidebar { background: transparent; border-right: 1px solid rgb(30 28 24 / 8%); }
+:global(html.theme-plaster) :is(.sideHome, .sidebar nav a) { color: #5d5c59; border-radius: 999px; }
+:global(html.theme-plaster) .sidebar a:hover { background: rgb(255 255 255 / 60%); color: #1a1a19; }
+:global(html.theme-plaster) .sidebar a.activeNav { background: #fff; color: #1a1a19; font-weight: 500; box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) .sidebar nav small { background: #e7e6e2; color: #5d5c59; border-radius: 999px; }
+:global(html.theme-plaster) .navGroup { color: #73726e; }
+:global(html.theme-plaster) .sidePromo { background: #fff; border: 0; border-radius: 16px; color: #5d5c59; box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) .sidePromo > b { color: #1a1a19; }
+:global(html.theme-plaster) .studio .sidePromo button { border-top-color: rgb(30 28 24 / 8%); color: #1a1a19; }
+:global(html.theme-plaster) .main { background: transparent; }
+
+/* 按钮：主按钮 = 墨色胶囊，次按钮 = 白底细边胶囊 */
+:global(html.theme-plaster) .studio :is(.primaryButton, .outlineButton) { border-radius: 999px; transition: transform .2s cubic-bezier(.22, .8, .2, 1), box-shadow .3s cubic-bezier(.22, .8, .2, 1), background .2s, border-color .2s; }
+:global(html.theme-plaster) .studio .primaryButton { background: #1a1a19; border-color: #1a1a19; color: #fff; box-shadow: 0 1px 2px rgb(30 28 24 / 12%), 0 10px 22px -12px rgb(30 28 24 / 45%); }
+:global(html.theme-plaster) .studio .primaryButton:hover:not(:disabled) { background: #000; border-color: #000; color: #fff; transform: translateY(-1px); }
+:global(html.theme-plaster) .studio .primaryButton:active:not(:disabled) { transform: translateY(0) scale(.98); }
+:global(html.theme-plaster) .studio .primaryButton:disabled { background: #e7e6e2; border-color: #e7e6e2; color: #73726e; box-shadow: none; opacity: 1; }
+:global(html.theme-plaster) .studio .outlineButton { background: #fff; border: 1px solid rgb(30 28 24 / 14%); color: #1a1a19; }
+:global(html.theme-plaster) .studio .outlineButton:hover:not(:disabled) { background: #fff; border-color: rgb(30 28 24 / 28%); }
+:global(html.theme-plaster) .studio .textButton { color: #1a1a19; }
+
+/* 卡片：白卡 + 淡投影，不靠粗描边 */
+:global(html.theme-plaster) .studio .featureCard { background: #fff; border: 0; border-radius: 18px; box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) .studio .featureCard:hover { box-shadow: 0 1px 2px rgb(30 28 24 / 6%), 0 18px 36px -18px rgb(30 28 24 / 26%); }
+:global(html.theme-plaster) .featureCard h2 small { border-color: rgb(30 28 24 / 14%); color: #73726e; border-radius: 999px; padding: 2px 6px; }
+:global(html.theme-plaster) .featureCard > i { background: #f5f4f1; color: #73726e; }
+:global(html.theme-plaster) .studio :is(.avatarCard, .workCard, .voiceCard, .copyList article) { border: 1px solid rgb(30 28 24 / 8%); border-radius: 16px; background: #fff; }
+:global(html.theme-plaster) .studio .avatarCard:hover { border-color: rgb(30 28 24 / 22%); }
+:global(html.theme-plaster) .studio .selectedCard { border-color: #1a1a19; box-shadow: 0 0 0 1px #1a1a19; }
+:global(html.theme-plaster) :is(.avatarImage, .studio .workImage) { background: #e7e6e2; }
+:global(html.theme-plaster) .search { border-radius: 999px; border-color: rgb(30 28 24 / 14%); }
+:global(html.theme-plaster) .search:focus-within { border-color: rgb(224 87 26 / 70%); box-shadow: 0 0 0 3px rgb(224 87 26 / 14%); }
+:global(html.theme-plaster) .studio .pills button { border-radius: 999px; color: #5d5c59; }
+:global(html.theme-plaster) .studio .pills button.activePill { background: #fff; border-color: rgb(30 28 24 / 14%); color: #1a1a19; }
+:global(html.theme-plaster) .studio .tabs > button.activeTab { color: #1a1a19; font-weight: 500; }
+:global(html.theme-plaster) .activeTab::after { height: 1.5px; background: #e0571a; }
+:global(html.theme-plaster) .emptyIcon { background: #fff; color: #73726e; border-radius: 999px; }
+:global(html.theme-plaster) .empty h3 { color: #1a1a19; }
+
+/* 弹窗：白色实底 + 柔和投影，背景石膏色半透明 */
+:global(html.theme-plaster) .studio .dialog { border: 1px solid rgb(30 28 24 / 8%); border-radius: 24px; box-shadow: 0 1px 2px rgb(30 28 24 / 6%), 0 30px 70px -24px rgb(30 28 24 / 30%); }
+:global(html.theme-plaster) .dialog::backdrop { background: rgb(30 28 24 / 28%); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+:global(html.theme-plaster) .dialogFooter { background: #fff; border-top-color: rgb(30 28 24 / 8%); }
+:global(html.theme-plaster) .studio .iconButton { border-radius: 999px; color: #5d5c59; }
+:global(html.theme-plaster) .studio .iconButton:hover { background: #f5f4f1; color: #1a1a19; }
+/* 石膏灰白补充：创作空间首页开场、入口卡、生成按钮、积分与任务、空画框 */
+:global(html.theme-plaster) .studio { font-family: "Outfit", "Polaris Outfit", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif; }
+:global(html.theme-plaster) .studio .generateButton { background: #1a1a19; border-color: #1a1a19; color: #fff; border-radius: 999px; box-shadow: 0 1px 2px rgb(30 28 24 / 12%), 0 10px 22px -12px rgb(30 28 24 / 45%); }
+:global(html.theme-plaster) .studio .generateButton:hover:not(:disabled) { background: #000; border-color: #000; color: #fff; }
+:global(html.theme-plaster) .studioIntro { background: linear-gradient(115deg, #e6e5e3, #eeeeed 60%, #edeceb); border: 1px solid rgb(30 28 24 / 8%); border-radius: 22px; box-shadow: none; }
+:global(html.theme-plaster) .studioIntro mark { background: linear-gradient(transparent 88%, rgb(224 87 26 / 75%) 88%, rgb(233 180 76 / 75%) 94%, transparent 94%); color: inherit; font-family: "Accent Serif", "Polaris Accent Serif", "Songti SC", "STSong", "Noto Serif SC", serif; font-weight: 500; }
+:global(html.theme-plaster) :is(.studioIntro p, .introEyebrow) { color: #5d5c59; }
+:global(html.theme-plaster) .introEyebrow { letter-spacing: .08em; }
+:global(html.theme-plaster) .entryCard { background: #fff; border-color: transparent; border-radius: 18px; box-shadow: 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) .entryCard:hover { background: #fff; border-color: transparent; box-shadow: 0 1px 2px rgb(30 28 24 / 6%), 0 18px 36px -18px rgb(30 28 24 / 26%); }
+:global(html.theme-plaster) .entryCard.entryPrimary { border-color: transparent; }
+:global(html.theme-plaster) .entryPrimary { box-shadow: inset 0 2px 0 #e0571a, 0 1px 2px rgb(30 28 24 / 5%), 0 8px 20px -12px rgb(30 28 24 / 16%); }
+:global(html.theme-plaster) :is(.creditBalance, .studio .taskCenterButton) { border-radius: 999px; border-color: rgb(30 28 24 / 14%); background: #fff; color: #1a1a19; }
+:global(html.theme-plaster) .taskAttention { color: #b33f0c; }
+:global(html.theme-plaster) .taskPanel { background: #fff; border: 1px solid rgb(30 28 24 / 8%); border-radius: 16px; box-shadow: 0 1px 2px rgb(30 28 24 / 6%), 0 30px 70px -24px rgb(30 28 24 / 30%); }
+:global(html.theme-plaster) .taskPanel li a:hover { background: #f5f4f1; }
+:global(html.theme-plaster) .studio .search :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"])),
+:global(html.theme-plaster) .studio .search :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"])):focus { border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+/* 智能剪辑页：去掉整页纯白，和其他页一样是石膏底；顶栏半透明石膏色 + 模糊 + 发丝线，「返回」是白底细边胶囊 */
+:global(html.theme-plaster) .editingStudio, :global(html.theme-plaster) .editingStudio .workspace { background: #eeedea; color: #1a1a19; }
+:global(html.theme-plaster) .editingStudio > .persistenceBody > .header { position: sticky; top: 0; z-index: 30; background: rgb(238 237 234 / 82%); border-bottom: 1px solid rgb(30 28 24 / 8%); -webkit-backdrop-filter: blur(20px) saturate(1.2); backdrop-filter: blur(20px) saturate(1.2); }
+:global(html.theme-plaster) .editingTitle b { font-weight: 500; }
+:global(html.theme-plaster) .studio .editingTitle button { background: #fff !important; color: #1a1a19 !important; border: 1px solid rgb(30 28 24 / 14%); border-radius: 999px; padding: 6px 14px; }
+:global(html.theme-plaster) .studio .editingTitle button:hover { border-color: rgb(30 28 24 / 28%); }
+:global(html.theme-plaster) .editingTitle :is(button, b) { white-space: nowrap; flex: none; }
+@media (max-width: 480px) { :global(html.theme-plaster) .editingTitle { gap: 12px; } :global(html.theme-plaster) .studio .editingTitle button { padding: 5px 12px; } }
+:global(html.theme-plaster) .editingStudio .accountAvatar { background: #e7e6e2; color: #1a1a19; }
+:global(html.theme-plaster) .editingStudio .returnSite { color: #73726e; }
+:global(html.theme-plaster) .editingStudio .main > .editorHeader { background: #fff; border-color: rgb(30 28 24 / 8%); border-radius: 14px; }
+@media (prefers-reduced-motion: reduce) {
+  :global(html.theme-plaster) .studio :is(.primaryButton, .outlineButton) { transition: none; }
+  :global(html.theme-plaster) .studio .primaryButton:hover:not(:disabled) { transform: none; }
+}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .studio{--accent:#aca7a1;--soft:#1d1b1a;--lime:#1d1b1a;--ink:#e9e8e7;--muted:#958f87;--border:#242320;background:#161514}
+:global(.theme-ember) .studio button:focus-visible,:global(.theme-ember) .studio a:focus-visible{outline:3px solid #56524d}
+:global(.theme-ember) .studio input:focus,:global(.theme-ember) .studio textarea:focus,:global(.theme-ember) .studio select:focus{border-color:#56524d;box-shadow:0 0 0 3px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .studio input,:global(.theme-ember) .studio textarea,:global(.theme-ember) .studio select{background:#0f0e0d}
+:global(.theme-ember) .studio input::placeholder,:global(.theme-ember) .studio textarea::placeholder{color:#a6a19b}
+:global(.theme-ember) .header{background:#0f0e0d}
+:global(.theme-ember) .brand em{color:#a5a09a}
+:global(.theme-ember) .brand small{color:#a6a19b}
+:global(.theme-ember) .brandDivider{color:#a6a19b}
+:global(.theme-ember) .previewBadge{color:#8c867d}
+:global(.theme-ember) .previewBadge i{background:#47443f}
+:global(.theme-ember) .returnSite{color:#8c867d !important}
+:global(.theme-ember) .studio .accountAvatar{border:1px solid #262422;background:#201f1d;color:#a09b94}
+:global(.theme-ember) .sidebar{background:#0f0e0d}
+:global(.theme-ember) .sideHome,:global(.theme-ember) .sidebar nav a{color:#9f9a93}
+:global(.theme-ember) .sidebar a:hover{background:#161615}
+:global(.theme-ember) .sidebar a.activeNav{background:#201f1d;color:#aca7a1}
+:global(.theme-ember) .sidebar nav small{background:#191917;color:#a6a19b}
+:global(.theme-ember) .navGroup{color:#a6a19b}
+:global(.theme-ember) .sidePromo{background:linear-gradient(135deg, #1b1a18, #151413);border:1px solid #21201d;color:#908a82}
+:global(.theme-ember) .sidePromo > b{color:#a5a099}
+:global(.theme-ember) .sidePromo > span{color:#a6a19b}
+:global(.theme-ember) .studio .sidePromo button{border-top:1px solid #262422;color:#a29c96}
+:global(.theme-ember) .studio .helpButton{color:#a6a19b}
+:global(.theme-ember) .main{background:#121211}
+:global(.theme-ember) .welcomeRow p,:global(.theme-ember) .pageHeading p{color:#a6a19b}
+:global(.theme-ember) .studio .primaryButton{background:#e9e8e7;border:1px solid #e9e8e7;color:#0f0e0d}
+:global(.theme-ember) .studio .primaryButton:hover:not(:disabled){color:#e9e8e6}
+:global(.theme-ember) .studio .outlineButton{background:#0f0e0d;border:1px solid #272523;color:#9f9a93}
+:global(.theme-ember) .studio .outlineButton:hover:not(:disabled){border-color:#4c4944;background:#161514}
+:global(.theme-ember) .studio .featureCard{border:1px solid #22201e}
+:global(.theme-ember) .studio .featureCard:hover{box-shadow:0 6px 20px rgb(0 0 0 / 0.078)}
+:global(.theme-ember) .featureCard h2 small{color:#a6a19b;border:1px solid #2c2a27}
+:global(.theme-ember) .featureCard p{color:#a6a19b}
+:global(.theme-ember) .featureCard div > span{color:#a6a19b}
+:global(.theme-ember) .featureCard > i{background:rgb(15 14 13 / 0.376);color:#a6a19b;border:1px solid rgb(15 14 13 / 0.69);box-shadow:5px 7px 10px rgb(0 0 0 / 0.113)}
+:global(.theme-ember) .featureAvatar{background:linear-gradient(125deg, #1f1d1b, #151413)}
+:global(.theme-ember) .featureVoice{background:linear-gradient(125deg, #211f1d, #161514)}
+:global(.theme-ember) .featureEdit{background:linear-gradient(125deg, #1a1917, #141311)}
+:global(.theme-ember) .featureEdit > i{color:#a6a19b}
+:global(.theme-ember) .featureCreate{background:linear-gradient(125deg, #1f1d1b, #141413)}
+:global(.theme-ember) .featureCreate > i{color:#a6a19b}
+:global(.theme-ember) .sectionHeading span{color:#a6a19b}
+:global(.theme-ember) .subtleLabel{border:1px solid #22211e}
+:global(.theme-ember) .studio .pills button{color:#a6a19b}
+:global(.theme-ember) .studio .pills button.activePill{background:#1f1d1b;border-color:#2a2825;color:#9b968f}
+:global(.theme-ember) .search{background:#0f0e0d;color:#a6a19b}
+:global(.theme-ember) .search:focus-within{border-color:#56524d}
+:global(.theme-ember) .studio .avatarCard{border:1px solid #22211f;background:#0f0e0d}
+:global(.theme-ember) .studio .avatarCard:hover{border-color:#55514b}
+:global(.theme-ember) .avatarImage{background:#1f1e1d}
+:global(.theme-ember) .avatarTag{background:rgb(15 14 13 / 0.812);color:#a6a19b}
+:global(.theme-ember) .cardHover{background:rgb(15 14 13 / 0.941);color:#a7a29c}
+:global(.theme-ember) .avatarCaption > span{color:#a6a19b}
+:global(.theme-ember) .avatarCaption svg{color:#a6a19b}
+:global(.theme-ember) .studio .tabs > button{color:#a6a19b}
+:global(.theme-ember) .studio .tabs > button.activeTab{color:#a8a39d}
+:global(.theme-ember) .activeTab::after{background:#e6e2db}
+:global(.theme-ember) .emptyIcon{background:#1a1917;color:#a6a19b}
+:global(.theme-ember) .empty h3{color:#8d867e}
+:global(.theme-ember) .empty p{color:#a6a19b}
+:global(.theme-ember) .voiceCard{background:#0f0e0d}
+:global(.theme-ember) .voiceCard span{color:#a6a19b}
+:global(.theme-ember) .voiceCard small{color:#a6a19b}
+:global(.theme-ember) .studio .voicePlay{color:#a6a19b;background:#1c1b19}
+:global(.theme-ember) .studio .selectedCard{border-color:#6c6760;box-shadow:0 0 0 1px #000000}
+:global(.theme-ember) .inlineNote{color:#a6a19b}
+:global(.theme-ember) .listHeading small{color:#a6a19b;background:#1d1b1a}
+:global(.theme-ember) .copyList article{background:#0f0e0d}
+:global(.theme-ember) .copyList article > div{color:#a6a19b}
+:global(.theme-ember) .copyList b{color:#a9a59f}
+:global(.theme-ember) .copyList time{color:#a6a19b}
+:global(.theme-ember) .copyList p{color:#a6a19b}
+:global(.theme-ember) .studio .textButton{color:#a6a19b}
+:global(.theme-ember) .editingWorks > p{color:#9b968e}
+:global(.theme-ember) .editingWorkVideo{background:#e9e8e6}
+:global(.theme-ember) .workCard{background:#0f0e0d}
+:global(.theme-ember) .studio .workImage{background:#211f1d}
+:global(.theme-ember) .workImage > span{background:rgb(15 14 13 / 0.902);color:#a6a19b}
+:global(.theme-ember) .workImage > i{background:rgb(15 14 13 / 0.69);color:#99938c}
+:global(.theme-ember) .workCard time{color:#a6a19b}
+:global(.theme-ember) .workCard p{color:#a6a19b}
+:global(.theme-ember) .editorMain{background:#0f0e0d}
+:global(.theme-ember) .back{color:#a6a19b !important}
+:global(.theme-ember) .projectName span{color:#a6a19b}
+:global(.theme-ember) .projectName input{border-color:#211f1d;color:#a6a19b;background:#111110}
+:global(.theme-ember) .autosave{color:#a6a19b}
+:global(.theme-ember) .portrait{background:#1f1e1c}
+:global(.theme-ember) .portraitBadge{background:rgb(15 14 13 / 0.851);color:#a6a19b}
+:global(.theme-ember) .portraitRatio{background:rgb(15 14 13 / 0.788);color:#a6a19b}
+:global(.theme-ember) .studio .selectAvatar{border:1px solid #2b2926;background:#141312;color:#a6a19b}
+:global(.theme-ember) .selectAvatar:hover{background:#1f1d1b}
+:global(.theme-ember) .portraitNote{color:#a6a19b}
+:global(.theme-ember) .studio .voiceSelector{border:1px solid #262522;background:#131211;color:#a6a19b}
+:global(.theme-ember) .voiceSelectorIcon{background:#1f1e1c}
+:global(.theme-ember) .voiceSelector b{color:#97928a}
+:global(.theme-ember) .voiceSelector small{color:#a6a19b}
+:global(.theme-ember) .voiceParams label > span{color:#a6a19b}
+:global(.theme-ember) .voiceParams label b{color:#a6a19b}
+:global(.theme-ember) .voiceParams select{color:#a6a19b}
+:global(.theme-ember) .voiceParams input[type=range]{accent-color:#79746c}
+:global(.theme-ember) .scriptBox{border:1px solid #252320}
+:global(.theme-ember) .scriptBox:focus-within{border-color:#57524d}
+:global(.theme-ember) .scriptToolbar > span{color:#a6a19b}
+:global(.theme-ember) .studio .scriptToolbar button{color:#a6a19b}
+:global(.theme-ember) .scriptBox textarea{color:#a19b95}
+:global(.theme-ember) .wordCount{color:#a6a19b}
+:global(.theme-ember) .studio .copyActions button{border:1px solid #262422;color:#a6a19b;background:#0f0e0d}
+:global(.theme-ember) .studio .copyActions button:hover{background:#191816}
+:global(.theme-ember) .editorFooter > label{color:#a6a19b}
+:global(.theme-ember) .editorFooter select{color:#a6a19b}
+:global(.theme-ember) .studio .generateButton{background:#e9e8e6;color:#0f0e0d}
+:global(.theme-ember) .studio .generateButton:hover{background:#1d1b1a;color:#e9e8e6}
+:global(.theme-ember) .editorAside{background:#0f0e0d}
+:global(.theme-ember) .studio .rightTabs button{color:#a6a19b}
+:global(.theme-ember) .studio .rightTabs .activeRightTab{color:#8c867e}
+:global(.theme-ember) .activeRightTab::after{background:#e6e2db}
+:global(.theme-ember) .rightTabs button > span{color:#a6a19b;background:#1c1a18}
+:global(.theme-ember) .assistantWelcome img{box-shadow:0 8px 20px rgb(0 0 0 / 0.169)}
+:global(.theme-ember) .assistantWelcome h2{color:#a6a19b}
+:global(.theme-ember) .assistantWelcome p{color:#a6a19b}
+:global(.theme-ember) .studio .promptSuggestions button{color:#a6a19b;background:#131211;border:1px solid #201f1d}
+:global(.theme-ember) .assistantComposer{border:1px solid #2a2825;background:#0f0e0d;box-shadow:0 4px 15px rgb(0 0 0 / 0.056)}
+:global(.theme-ember) .assistantSelect{background:#1a1817;color:#a6a19b}
+:global(.theme-ember) .assistantSelect select{color:#a6a19b}
+:global(.theme-ember) .assistantComposer textarea{color:#a6a19b}
+:global(.theme-ember) .assistantComposer textarea::placeholder{color:#a6a19b}
+:global(.theme-ember) .assistantComposer > div span{color:#a6a19b}
+:global(.theme-ember) .studio .assistantComposer > div button{color:#0f0e0d;background:#e6e2db}
+:global(.theme-ember) .assistantAnswer{border:1px solid #22211e;background:#131211}
+:global(.theme-ember) .assistantAnswer > span{color:#a6a19b}
+:global(.theme-ember) .assistantAnswer p{color:#a6a19b}
+:global(.theme-ember) .bigIcon{color:#a6a19b;background:#1b1a18}
+:global(.theme-ember) .audioDrive h2{color:#a6a19b}
+:global(.theme-ember) .audioDrive p{color:#a6a19b}
+:global(.theme-ember) .audioDrive > small{color:#a6a19b}
+:global(.theme-ember) .uploadButton{border:1px solid #322f2c;color:#a6a19b;background:#161514}
+:global(.theme-ember) .uploadButton:focus-within,:global(.theme-ember) .cloneDrop:focus-within{outline:3px solid #56524d}
+:global(.theme-ember) .audioFile{border:1px solid #22211e}
+:global(.theme-ember) .audioFile b{color:#a6a19b}
+:global(.theme-ember) .audioFile small{color:#a6a19b}
+:global(.theme-ember) .editorBrand{color:#a6a19b}
+:global(.theme-ember) .brandSmall b{color:#a6a19b}
+:global(.theme-ember) .brandSmall em{color:#a6a19b}
+:global(.theme-ember) .studio .dialog{border:1px solid #282624;background:#0f0e0d;box-shadow:0 30px 100px rgb(0 0 0 / 0.374)}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.5)}
+:global(.theme-ember) .studio .iconButton{color:#a6a19b}
+:global(.theme-ember) .studio .iconButton:hover{background:#1b1918}
+:global(.theme-ember) .dialogFooter{background:#111010}
+:global(.theme-ember) .check{background:#e6e2db;color:#0f0e0d}
+:global(.theme-ember) .rewriteContent label,:global(.theme-ember) .cloneForm > label{color:#a6a19b}
+:global(.theme-ember) .cloneForm .cloneDrop{border:1px dashed #34322e;background:#131211;color:#a6a19b}
+:global(.theme-ember) .cloneDrop b{color:#a6a19b}
+:global(.theme-ember) .cloneDrop span{color:#a6a19b}
+:global(.theme-ember) .cloneDrop small{color:#a6a19b}
+:global(.theme-ember) .generationReview > img{background:#1f1e1c}
+:global(.theme-ember) .generationReview p{color:#a6a19b}
+:global(.theme-ember) .demoNotice{background:#191816;color:#a6a19b}
+:global(.theme-ember) .demoPreview{background:#1b1918}
+:global(.theme-ember) .demoPreview > span{background:rgb(15 14 13 / 0.855);color:#a6a19b}
+:global(.theme-ember) .previewText{color:#a6a19b}
+:global(.theme-ember) .helpContent p{color:#a6a19b}
+:global(.theme-ember) .toast{border:1px solid #272523;box-shadow:0 6px 30px rgb(0 0 0 / 0.226);background:#0f0e0d;color:#8d877e}
+:global(.theme-ember) .studio .scriptToolbar > span,:global(.theme-ember) .studio .voiceParams label > span{color:#a6a19b}
+:global(.theme-ember) .studio .voiceParams select,:global(.theme-ember) .studio .editorFooter select{color:#918b83}
+:global(.theme-ember) .studio .copyActions button{color:#a6a19b}
+:global(.theme-ember) .studio .rightTabs button{color:#a6a19b}
+:global(.theme-ember) .studio .rightTabs .activeRightTab{color:#a29d96}
+:global(.theme-ember) .studio .scriptBox textarea::placeholder{color:#a6a19b}
+:global(.theme-ember) .studio .assistantWelcome h2{color:#a6a19b}
+:global(.theme-ember) .studio .assistantWelcome p,:global(.theme-ember) .studio .promptSuggestions button{color:#a6a19b}
+:global(.theme-ember) .studio .assistantComposer textarea::placeholder{color:#a6a19b}
+:global(.theme-ember) .editorHeader > select{color:#a6a19b;background:#111110}
+:global(.theme-ember) .persistenceNotice{background:#1b1918;color:#c6c2be}
+:global(.theme-ember) .persistenceNotice button{border:1px solid #312f2c;background:#0f0e0d}
+:global(.theme-ember) .studio button.avatarImage{background:#1d1c1b}
+:global(.theme-ember) .studio .primaryButton,:global(.theme-ember) .studio .generateButton{box-shadow:0 3px 0 rgb(0 0 0 / 0.141)}
+:global(.theme-ember) .studio .primaryButton:hover:not(:disabled),:global(.theme-ember) .studio .generateButton:hover:not(:disabled){box-shadow:0 6px 16px rgb(0 0 0 / 0.169)}
+:global(.theme-ember) .sidebar{background:linear-gradient(180deg, #0f0e0d 70%, #191816)}
+:global(.theme-ember) .sidebar a.activeNav{background:#21201e;color:#e9e8e6}
+:global(.theme-ember) .sidebar a.activeNav svg{color:#cbc9c5}
+:global(.theme-ember) .main{background:#121211}
+:global(.theme-ember) .studioIntro{border:1px solid #282624;background:linear-gradient(rgb(15 14 13 / 0.282) 1px, transparent 1px), linear-gradient(90deg, rgb(15 14 13 / 0.282) 1px, transparent 1px), linear-gradient(120deg, #242220 3%, #1f1e1c 50%, #181715 100%);background-size:32px 32px, 32px 32px, 100% 100%}
+:global(.theme-ember) .introEyebrow{color:#a39e97}
+:global(.theme-ember) .studioIntro mark{background:linear-gradient(transparent 60%, #1d1b1a 60%)}
+:global(.theme-ember) .studioIntro p{color:#b1ada7}
+:global(.theme-ember) .introOrbit{border:1px dashed rgb(135 129 120 / 0.349)}
+:global(.theme-ember) .introVoice{border:1px solid rgb(15 14 13 / 0.788);box-shadow:0 15px 45px rgb(0 0 0 / 0.162);background:rgb(15 14 13 / 0.78)}
+:global(.theme-ember) .introVoice > svg{color:#c3c0bc}
+:global(.theme-ember) .introVoice > span{color:#99938c}
+:global(.theme-ember) .introVoice b small{color:#948e86}
+:global(.theme-ember) .introWave i{background:#e6e2db}
+:global(.theme-ember) .introWave i:nth-child(3n){background:#4d4944}
+:global(.theme-ember) .introAvatar{background:#1a1917;box-shadow:0 8px 20px rgb(0 0 0 / 0.127);border:1px solid #2d2b28}
+:global(.theme-ember) .introTag{color:#918b83}
+:global(.theme-ember) .studio .featureCard:hover{box-shadow:0 10px 25px rgb(0 0 0 / 0.127)}
+:global(.theme-ember) .featureCard p{color:#8f8981}
+:global(.theme-ember) .featureCard div > span{color:#b0aba5}
+:global(.theme-ember) .avatarCard:hover,:global(.theme-ember) .workCard:hover{box-shadow:0 8px 20px rgb(0 0 0 / 0.113)}
+:global(.theme-ember) .editor{background:linear-gradient(120deg, #1b1a18, #161514 75%)}
+:global(.theme-ember) .editorMain,:global(.theme-ember) .editorAside{box-shadow:0 3px 12px rgb(0 0 0 / 0.056)}
+:global(.theme-ember) .editorHeader{background:rgb(15 14 13 / 0.937)}
+:global(.theme-ember) .projectName input{color:#cbc9c5}
+:global(.theme-ember) .studio .voiceSelector{color:#b9b5b0;border-color:#2c2a27;background:linear-gradient(110deg, #151413, #121110)}
+:global(.theme-ember) .voiceSelector b{color:#d8d6d3}
+:global(.theme-ember) .voiceSelector small,:global(.theme-ember) .voiceParams label > span,:global(.theme-ember) .voiceParams label b,:global(.theme-ember) .voiceParams select{color:#9f9992}
+:global(.theme-ember) .voiceParams input[type=range]{accent-color:#a19c95}
+:global(.theme-ember) .scriptToolbar > span{color:#98928b}
+:global(.theme-ember) .studio .scriptToolbar button{color:#a5a099}
+:global(.theme-ember) .scriptBox textarea{color:#e4e3e1}
+:global(.theme-ember) .wordCount{color:#a6a19b}
+:global(.theme-ember) .studio .copyActions button{color:#9e9992}
+:global(.theme-ember) .assistantWelcome h2{color:#c9c6c2}
+:global(.theme-ember) .assistantWelcome p,:global(.theme-ember) .studio .promptSuggestions button{color:#a6a19b}
+:global(.theme-ember) .assistantComposer textarea{color:#c8c5c1}
+:global(.theme-ember) .assistantComposer textarea::placeholder{color:#a6a19b}
+:global(.theme-ember) .assistantComposer > div span{color:#a6a19b}
+:global(.theme-ember) .studio .assistantComposer > div button{background:#e9e8e6}
+:global(.theme-ember) .studio .rightTabs .activeRightTab{color:#e4e2e0}
+:global(.theme-ember) .activeRightTab::after{background:#393632}
+:global(.theme-ember) .studio .dialog{box-shadow:0 32px 100px rgb(0 0 0 / 0.339)}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.5)}
+:global(.theme-ember) .studio{--ink:#e9e8e6;--muted:#9e9992;background:#181716}
+:global(.theme-ember) .main{background:#141313}
+:global(.theme-ember) .pageHeading p,:global(.theme-ember) .welcomeRow p,:global(.theme-ember) .sectionHeading span{color:#9b958e}
+:global(.theme-ember) .studio .textButton{color:#afaba5}
+:global(.theme-ember) .studio .tabs > button{color:#a09b94}
+:global(.theme-ember) .studio .tabs > button.activeTab{color:#cecbc7}
+:global(.theme-ember) .sidebar a.activeNav{color:#cecbc7;background:#211f1d;box-shadow:inset 3px 0 #000000}
+:global(.theme-ember) .avatarCaption strong{color:#e9e8e6}
+:global(.theme-ember) .avatarCaption > span{color:#9e9992}
+:global(.theme-ember) .avatarTag{color:#c4c0bc}
+:global(.theme-ember) .copyList b{color:#e9e8e6}
+:global(.theme-ember) .copyList p{color:#aea9a4}
+:global(.theme-ember) .copyList time,:global(.theme-ember) .workCard time,:global(.theme-ember) .workCard p{color:#9b968e}
+:global(.theme-ember) .empty h3{color:#d5d3d0}
+:global(.theme-ember) .empty p{color:#958f88}
+:global(.theme-ember) .editorMain,:global(.theme-ember) .editorAside{box-shadow:0 2px 12px rgb(0 0 0 / 0.028)}
+:global(.theme-ember) .editorHeader .tabs{background:#1a1918}
+:global(.theme-ember) .studio .editorHeader .tabs button{color:#9f9992}
+:global(.theme-ember) .studio .editorHeader .tabs button.activeTab{background:#0f0e0d;color:#dedcda;box-shadow:0 1px 4px rgb(0 0 0 / 0.127)}
+:global(.theme-ember) .editorHeader > select{background:#151413}
+:global(.theme-ember) .projectName input{color:#e5e4e2;background:#151413}
+:global(.theme-ember) .projectName span{color:#9b958e}
+:global(.theme-ember) .autosave{color:#908a82}
+:global(.theme-ember) .portrait{background:#1d1c1b}
+:global(.theme-ember) .portraitBadge{color:#d7d4d1}
+:global(.theme-ember) .studio .selectAvatar{color:#c1beba;border-color:#3b3834;background:#181715}
+:global(.theme-ember) .portraitNote{color:#928b84}
+:global(.theme-ember) .studio .voiceSelector{background:#0f0e0d;border-color:#2f2d2a;color:#a19c95;box-shadow:0 3px 10px rgb(0 0 0 / 0.028)}
+:global(.theme-ember) .voiceSelector b{color:#e9e8e6}
+:global(.theme-ember) .voiceSelector small{color:#928c84}
+:global(.theme-ember) .studio .voiceParams label > span{color:#b8b4af}
+:global(.theme-ember) .voiceParams label b{color:#b5b1ac}
+:global(.theme-ember) .studio .voiceParams select{color:#c6c3bf;background:#151413}
+:global(.theme-ember) .voiceParams input[type=range]{accent-color:#8e8880}
+:global(.theme-ember) .scriptBox{border-color:#2f2d2a}
+:global(.theme-ember) .scriptToolbar{border-bottom:1px solid #1f1e1c}
+:global(.theme-ember) .studio .scriptToolbar > span{color:#d4d2cf}
+:global(.theme-ember) .studio .scriptToolbar button{color:#aaa59f}
+:global(.theme-ember) .scriptBox textarea{color:#e9e8e6}
+:global(.theme-ember) .studio .scriptBox textarea::placeholder{color:#7d776f}
+:global(.theme-ember) .wordCount{color:#837d74}
+:global(.theme-ember) .studio .copyActions button{color:#b0aba6;border-color:#2c2a27;background:#141312}
+:global(.theme-ember) .editorFooter{background:#0f0e0d;box-shadow:0 -4px 16px rgb(0 0 0 / 0.035)}
+:global(.theme-ember) .studio .editorFooter select{color:#a49e98}
+:global(.theme-ember) .studio .rightTabs button{color:#a09b94}
+:global(.theme-ember) .studio .rightTabs .activeRightTab{color:#0f0e0d;background:#e6e2db;box-shadow:0 3px 8px rgb(0 0 0 / 0.261)}
+:global(.theme-ember) .rightTabs button > span{background:#1f1e1c;color:#9a958e}
+:global(.theme-ember) .generationReview p,:global(.theme-ember) .helpContent p,:global(.theme-ember) .previewText{color:#b4b0aa}
+:global(.theme-ember) .portraitEmpty{color:#78726a;background:#1b1918}
+:global(.theme-ember) .portraitEmpty b{color:#b8b4af}
+:global(.theme-ember) .portraitEmpty span{color:#8b847c}
+@media (max-width: 600px){:global(.theme-ember) .editorFooter{border:1px solid #2c2a27;box-shadow:0 -5px 22px rgb(0 0 0 / 0.155)}}
+:global(.theme-ember) .workActions{border-top:1px solid #1d1c1a}
+:global(.theme-ember) .studio{--ink:#e9e8e6;--muted:#8e8880;--border:#252320}
+:global(.theme-ember) .studio .dialog{scrollbar-color:#393633 transparent}
+:global(.theme-ember) .dialogInner > header{background:#0f0e0d;border-bottom:1px solid #1e1c1a}
+:global(.theme-ember) .dialogInner > p{color:#908981}
+:global(.theme-ember) .dialogFooter{background:#0f0e0d}
+:global(.theme-ember) .dialogInner > p[role=alert]{border:1px solid #292724;color:#fa682a;background:#141312}
+:global(.theme-ember) .pageHeading p,:global(.theme-ember) .welcomeRow p{color:#8c857d}
+:global(.theme-ember) .copyList article > div > b{color:#d1cfcb}
+:global(.theme-ember) .copyList article > div > time{color:#807a72}
+:global(.theme-ember) .templateReview{background:#151413;border:1px solid #21201d}
+:global(.theme-ember) .templateReview > img{background:#21201d}
+:global(.theme-ember) .templateReview span{color:#837c74}
+:global(.theme-ember) .helpSteps > div{border:1px solid #23211f;background:#151413}
+:global(.theme-ember) .helpSteps > div > span{color:#928c84;background:#211f1d}
+:global(.theme-ember) .helpSteps b{color:#cecbc8}
+:global(.theme-ember) .helpSteps p{color:#807971}
+:global(.theme-ember) .helpNotes{color:#969189}
+:global(.theme-ember) .statusCard{background:#0f0e0d}
+:global(.theme-ember) .statusCard > svg{color:#817b73}
+:global(.theme-ember) .statusCard p{color:#868077}
+:global(.theme-ember) .connectionNotice{background:#181715;border-bottom:1px solid #262422;color:#98928b}
+:global(.theme-ember) .editingStudio .main>.editorHeader{border:1px solid #242220}
+:global(.theme-ember) .editingStudio{background:#0f0e0d;color:#e9e8e7}
+:global(.theme-ember) .editingStudio>.persistenceBody>.header{border-bottom:1px solid #22211f;background:#0f0e0d}
+:global(.theme-ember) .editingTitle button{background:#1c1b19!important;color:#a4a19c!important}
+:global(.theme-ember) .editingStudio .workspace{background:#0f0e0d}
+:global(.theme-ember) .editingProject{color:#7c7873}
+:global(.theme-ember) .editingStudio .accountAvatar{background:#1b1a19;color:#a4a19c}
+:global(.theme-ember) .editingStudio .returnSite{color:#7c7873}
+:global(.theme-ember) .studio .entryCard{background:#0f0e0d}
+:global(.theme-ember) .studio .entryCard:hover{border-color:#3d3a36;box-shadow:0 8px 24px rgb(0 0 0 / 0.071)}
+:global(.theme-ember) .studio .entryCard:focus-visible{outline:2px solid #cecbc7}
+:global(.theme-ember) .studio .entryPrimary{border-color:#55514b}
+:global(.theme-ember) .entryStep{color:#8c857d}
+:global(.theme-ember) .entryCard h2{color:#e9e8e6}
+:global(.theme-ember) .entryCard h2 small{color:#cecbc7}
+:global(.theme-ember) .entryCard p{color:#9b958e}
+:global(.theme-ember) .entryGo{color:#cecbc7}
+:global(.theme-ember) .studio .projectSteps :is(button, a){color:#847d75}
+:global(.theme-ember) .studio .projectSteps :is(button, a):hover{color:#e9e8e6}
+:global(.theme-ember) .studio .projectSteps :is(button, a):focus-visible{outline:2px solid #cecbc7}
+:global(.theme-ember) .stepIndex{border:1px solid #35332f}
+:global(.theme-ember) .projectSteps small{color:#cecbc7}
+:global(.theme-ember) .studio .step_current :is(button, a){color:#e9e8e6;border-bottom-color:#cecbc7}
+:global(.theme-ember) .step_current .stepIndex{border-color:#cecbc7;color:#cecbc7}
+:global(.theme-ember) .studio .step_done :is(button, a){color:#bab6b2}
+:global(.theme-ember) .step_done .stepIndex{border-color:#bab6b2;color:#bab6b2}
+:global(.theme-ember) .studio .taskCenterButton{color:#d4d1ce}
+:global(.theme-ember) .studio .taskCenterButton:hover{border-color:#3d3a36}
+:global(.theme-ember) .studio .taskCenterButton:focus-visible{outline:2px solid #cecbc7}
+:global(.theme-ember) .taskCount{color:#cecbc7}
+:global(.theme-ember) .taskPanel{background:#0f0e0d;box-shadow:0 18px 40px rgb(0 0 0 / 0.184)}
+:global(.theme-ember) .taskPanel header span{color:#8c857d}
+:global(.theme-ember) .taskPanel li a{color:#e9e8e6}
+:global(.theme-ember) .taskPanel li a:hover{background:#161615}
+:global(.theme-ember) .taskStatus{color:#8c857d}
+:global(.theme-ember) .taskAttention{color:#cecbc7}
+:global(.theme-ember) .taskEmpty,:global(.theme-ember) .taskPanel > p{color:#8c857d}
+:global(.theme-ember) .taskPanel footer{color:#9b958e}
+:global(.theme-ember) .taskPanel footer a{color:#cecbc7}
+:global(.theme-ember) .creditBalance{color:#9f9a93}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .studio{--accent:#1a1a19;--soft:#eae9e8;--lime:#eae9e7;--ink:#22211f;--muted:#727068;--border:#e2e1df;background:#f1f1f0}
+:global(.theme-plaster) .studio button:focus-visible,:global(.theme-plaster) .studio a:focus-visible{outline:3px solid #1a1a19}
+:global(.theme-plaster) .studio input:focus,:global(.theme-plaster) .studio textarea:focus,:global(.theme-plaster) .studio select:focus{border-color:#1a1a19;box-shadow:0 0 0 3px #ffffff}
+:global(.theme-plaster) .studio input,:global(.theme-plaster) .studio textarea,:global(.theme-plaster) .studio select{background:#ffffff;border-radius:9px}
+:global(.theme-plaster) .studio input::placeholder,:global(.theme-plaster) .studio textarea::placeholder{color:#65625b}
+:global(.theme-plaster) .studio h1{font-weight:500}
+:global(.theme-plaster) .studio h2{font-weight:500}
+:global(.theme-plaster) .studio h3{font-weight:500}
+:global(.theme-plaster) .header{background:#ffffff}
+:global(.theme-plaster) .brand em{color:#65635c}
+:global(.theme-plaster) .brand small{color:#65625b}
+:global(.theme-plaster) .brandDivider{color:#65625b}
+:global(.theme-plaster) .previewBadge{color:#7a776f}
+:global(.theme-plaster) .previewBadge i{background:#1a1a19}
+:global(.theme-plaster) .returnSite{color:#7a776f !important}
+:global(.theme-plaster) .studio .accountAvatar{border:1px solid #e0dfdd;background:#e6e6e4;color:#1a1a19}
+:global(.theme-plaster) .sidebar{background:#ffffff}
+:global(.theme-plaster) .sideHome,:global(.theme-plaster) .sidebar nav a{color:#6a6760}
+:global(.theme-plaster) .sidebar a:hover{background:#f1f0ef}
+:global(.theme-plaster) .sidebar a.activeNav{background:#e6e5e3;color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .sidebar nav small{background:#ededeb;color:#65625b}
+:global(.theme-plaster) .navGroup{color:#65625b}
+:global(.theme-plaster) .sidePromo{background:linear-gradient(135deg, #ecebea, #f2f2f1);border:1px solid #e5e4e2;color:#76736b;border-radius:14px}
+:global(.theme-plaster) .sidePromo > b{color:#66635c}
+:global(.theme-plaster) .sidePromo > span{color:#65625b}
+:global(.theme-plaster) .studio .sidePromo button{border-top:1px solid #e0dfdc;color:#68665e}
+:global(.theme-plaster) .studio .helpButton{color:#65625b}
+:global(.theme-plaster) .main{background:#f5f4f4}
+:global(.theme-plaster) .welcomeRow p,:global(.theme-plaster) .pageHeading p{color:#65625b}
+:global(.theme-plaster) .studio .primaryButton{background:#282724;border:1px solid #282724;color:#ffffff}
+:global(.theme-plaster) .studio .primaryButton:hover:not(:disabled){color:#2a2926}
+:global(.theme-plaster) .studio .outlineButton{background:#ffffff;border:1px solid #dbdbd8;color:#6a6860}
+:global(.theme-plaster) .studio .outlineButton:hover:not(:disabled){border-color:#1a1a19;background:#f1f1f0}
+:global(.theme-plaster) .studio .featureCard{border:1px solid #e5e4e2}
+:global(.theme-plaster) .studio .featureCard:hover{box-shadow:0 6px 20px rgb(30 27 22 / 0.043)}
+:global(.theme-plaster) .featureCard h2{font-weight:500}
+:global(.theme-plaster) .featureCard h2 small{color:#65625b;border:1px solid #d6d5d1}
+:global(.theme-plaster) .featureCard p{color:#65625b}
+:global(.theme-plaster) .featureCard div > span{color:#65625b}
+:global(.theme-plaster) .featureCard > i{background:rgb(255 255 255 / 0.376);color:#65625b;border:1px solid rgb(255 255 255 / 0.69);box-shadow:5px 7px 10px rgb(30 27 22 / 0.063);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .featureAvatar{background:linear-gradient(125deg, #e8e7e5, #f2f2f1)}
+:global(.theme-plaster) .featureVoice{background:linear-gradient(125deg, #e5e5e3, #f1f1f0)}
+:global(.theme-plaster) .featureEdit{background:linear-gradient(125deg, #ededeb, #f4f3f3)}
+:global(.theme-plaster) .featureEdit > i{color:#65625b}
+:global(.theme-plaster) .featureCreate{background:linear-gradient(125deg, #e8e7e5, #f3f2f1)}
+:global(.theme-plaster) .featureCreate > i{color:#65625b}
+:global(.theme-plaster) .sectionHeading span{color:#65625b}
+:global(.theme-plaster) .subtleLabel{border:1px solid #e4e3e1}
+:global(.theme-plaster) .studio .pills button{color:#65625b;border-radius:999px}
+:global(.theme-plaster) .studio .pills button.activePill{background:#e8e7e5;border-color:#d8d7d4;color:#1a1a19}
+:global(.theme-plaster) .search{background:#ffffff;color:#65625b;border-radius:8px}
+:global(.theme-plaster) .search:focus-within{border-color:#1a1a19}
+:global(.theme-plaster) .studio .avatarCard{border:1px solid #e4e3e1;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .studio .avatarCard:hover{border-color:#1a1a19}
+:global(.theme-plaster) .avatarImage{background:#e7e6e4}
+:global(.theme-plaster) .avatarTag{background:rgb(255 255 255 / 0.812);color:#65625b;border-radius:999px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .cardHover{background:rgb(255 255 255 / 0.941);color:#1a1a19;border-radius:8px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .avatarCaption > span{color:#65625b}
+:global(.theme-plaster) .avatarCaption svg{color:#65625b}
+:global(.theme-plaster) .studio .tabs > button{color:#65625b}
+:global(.theme-plaster) .studio .tabs > button.activeTab{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .activeTab::after{background:#1a1a19;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .emptyIcon{background:#ededeb;color:#65625b}
+:global(.theme-plaster) .empty h3{color:#7a776e}
+:global(.theme-plaster) .empty p{color:#65625b}
+:global(.theme-plaster) .voiceCard{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .voiceCard span{color:#65625b}
+:global(.theme-plaster) .voiceCard small{color:#65625b}
+:global(.theme-plaster) .studio .voicePlay{color:#65625b;background:#ebeae9}
+:global(.theme-plaster) .studio .selectedCard{border-color:#1a1a19;box-shadow:0 0 0 1px #1e1b16}
+:global(.theme-plaster) .inlineNote{color:#65625b}
+:global(.theme-plaster) .listHeading small{color:#65625b;background:#eae9e8}
+:global(.theme-plaster) .copyList article{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .copyList article > div{color:#65625b}
+:global(.theme-plaster) .copyList b{color:#626059}
+:global(.theme-plaster) .copyList time{color:#65625b}
+:global(.theme-plaster) .copyList p{color:#65625b}
+:global(.theme-plaster) .studio .textButton{color:#65625b}
+:global(.theme-plaster) .editingWorks > p{color:#6d6b63}
+:global(.theme-plaster) .editingWorkVideo{background:#1b1a19}
+:global(.theme-plaster) .workCard{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .studio .workImage{background:#e5e5e3}
+:global(.theme-plaster) .workImage > span{background:rgb(255 255 255 / 0.902);color:#65625b;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .workImage > i{background:rgb(255 255 255 / 0.69);color:#1a1a19;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .workCard time{color:#65625b}
+:global(.theme-plaster) .workCard p{color:#65625b}
+:global(.theme-plaster) .editorMain{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .back{color:#65625b !important}
+:global(.theme-plaster) .projectName span{color:#65625b}
+:global(.theme-plaster) .projectName input{border-color:#e5e4e2;color:#65625b;background:#f6f5f5}
+:global(.theme-plaster) .autosave{color:#65625b}
+:global(.theme-plaster) .portrait{background:#e7e7e5;border-radius:9px}
+:global(.theme-plaster) .portraitBadge{background:rgb(255 255 255 / 0.851);color:#65625b;border-radius:999px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .portraitRatio{background:rgb(255 255 255 / 0.788);color:#65625b;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .studio .selectAvatar{border:1px solid #d7d6d3;background:#f3f3f2;color:#65625b}
+:global(.theme-plaster) .selectAvatar:hover{background:#e8e7e5}
+:global(.theme-plaster) .portraitNote{color:#65625b}
+:global(.theme-plaster) .studio .voiceSelector{border:1px solid #e0dfdc;background:#f4f4f3;color:#65625b;border-radius:9px}
+:global(.theme-plaster) .voiceSelectorIcon{background:#e7e6e4;border-radius:12px}
+:global(.theme-plaster) .voiceSelector b{color:#706e66}
+:global(.theme-plaster) .voiceSelector small{color:#65625b}
+:global(.theme-plaster) .voiceParams label > span{color:#65625b}
+:global(.theme-plaster) .voiceParams label b{color:#65625b}
+:global(.theme-plaster) .voiceParams select{color:#65625b}
+:global(.theme-plaster) .voiceParams input[type=range]{accent-color:#1a1a19}
+:global(.theme-plaster) .scriptBox{border:1px solid #e1e1de}
+:global(.theme-plaster) .scriptBox:focus-within{border-color:#1a1a19}
+:global(.theme-plaster) .scriptToolbar > span{color:#65625b}
+:global(.theme-plaster) .studio .scriptToolbar button{color:#65625b}
+:global(.theme-plaster) .scriptBox textarea{color:#69665f}
+:global(.theme-plaster) .wordCount{color:#65625b}
+:global(.theme-plaster) .studio .copyActions button{border:1px solid #e0dfdd;color:#65625b;background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .studio .copyActions button:hover{background:#eeeeec}
+:global(.theme-plaster) .editorFooter > label{color:#65625b}
+:global(.theme-plaster) .editorFooter select{color:#65625b}
+:global(.theme-plaster) .studio .generateButton{background:#272623;color:#ffffff;border-radius:999px}
+:global(.theme-plaster) .studio .generateButton:hover{background:#eae9e7;color:#2d2c29}
+:global(.theme-plaster) .editorAside{background:#ffffff;border-radius:12px}
+:global(.theme-plaster) .studio .rightTabs button{color:#65625b}
+:global(.theme-plaster) .studio .rightTabs .activeRightTab{color:#1a1a19}
+:global(.theme-plaster) .activeRightTab::after{background:#1a1a19;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .rightTabs button > span{color:#65625b;background:#ebebe9}
+:global(.theme-plaster) .assistantWelcome img{box-shadow:0 8px 20px rgb(30 27 22 / 0.094)}
+:global(.theme-plaster) .assistantWelcome h2{color:#65625b}
+:global(.theme-plaster) .assistantWelcome p{color:#65625b}
+:global(.theme-plaster) .studio .promptSuggestions button{color:#65625b;background:#f4f4f3;border:1px solid #e6e5e3;border-radius:999px}
+:global(.theme-plaster) .assistantComposer{border:1px solid #d9d8d5;background:#ffffff;box-shadow:0 4px 15px rgb(30 27 22 / 0.031);border-radius:12px}
+:global(.theme-plaster) .assistantSelect{background:#ededeb;color:#65625b}
+:global(.theme-plaster) .assistantSelect select{color:#65625b}
+:global(.theme-plaster) .assistantComposer textarea{color:#65625b}
+:global(.theme-plaster) .assistantComposer textarea::placeholder{color:#65625b}
+:global(.theme-plaster) .assistantComposer > div span{color:#65625b}
+:global(.theme-plaster) .studio .assistantComposer > div button{color:#ffffff;background:#1a1a19;border-radius:999px}
+:global(.theme-plaster) .assistantAnswer{border:1px solid #e4e3e1;background:#f4f4f3;border-radius:11px}
+:global(.theme-plaster) .assistantAnswer > span{color:#65625b}
+:global(.theme-plaster) .assistantAnswer p{color:#65625b}
+:global(.theme-plaster) .bigIcon{color:#65625b;background:#ecebea}
+:global(.theme-plaster) .audioDrive h2{color:#65625b}
+:global(.theme-plaster) .audioDrive p{color:#65625b}
+:global(.theme-plaster) .audioDrive > small{color:#65625b}
+:global(.theme-plaster) .uploadButton{border:1px solid #d0cfcb;color:#65625b;background:#f1f1f0}
+:global(.theme-plaster) .uploadButton:focus-within,:global(.theme-plaster) .cloneDrop:focus-within{outline:3px solid #1a1a19}
+:global(.theme-plaster) .audioFile{border:1px solid #e4e3e1}
+:global(.theme-plaster) .audioFile b{color:#65625b}
+:global(.theme-plaster) .audioFile small{color:#65625b}
+:global(.theme-plaster) .editorBrand{color:#65625b}
+:global(.theme-plaster) .brandSmall b{color:#65625b}
+:global(.theme-plaster) .brandSmall em{color:#65625b}
+:global(.theme-plaster) .studio .dialog{border:1px solid #dad9d6;background:#ffffff;box-shadow:0 30px 100px rgb(30 27 22 / 0.208);border-radius:16px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .dialog::backdrop{background:rgb(36 35 32 / 0.4)}
+:global(.theme-plaster) .studio .iconButton{color:#65625b;border-radius:999px}
+:global(.theme-plaster) .studio .iconButton:hover{background:#ececea}
+:global(.theme-plaster) .dialogFooter{background:#f6f6f5}
+:global(.theme-plaster) .check{background:#1a1a19;color:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .rewriteContent label,:global(.theme-plaster) .cloneForm > label{color:#65625b}
+:global(.theme-plaster) .cloneForm .cloneDrop{border:1px dashed #cdcbc8;background:#f4f4f3;color:#65625b;border-radius:12px}
+:global(.theme-plaster) .cloneDrop b{color:#65625b}
+:global(.theme-plaster) .cloneDrop span{color:#65625b}
+:global(.theme-plaster) .cloneDrop small{color:#65625b}
+:global(.theme-plaster) .generationReview > img{background:#e7e7e5;border-radius:9px}
+:global(.theme-plaster) .generationReview p{color:#65625b}
+:global(.theme-plaster) .demoNotice{background:#eeeeec;color:#65625b;border-radius:9px}
+:global(.theme-plaster) .demoPreview{background:#ececea;border-radius:11px}
+:global(.theme-plaster) .demoPreview > span{background:rgb(255 255 255 / 0.855);color:#65625b;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .previewText{color:#65625b}
+:global(.theme-plaster) .helpContent p{color:#65625b}
+:global(.theme-plaster) .toast{border:1px solid #dbdad7;box-shadow:0 6px 30px rgb(30 27 22 / 0.125);background:#ffffff;color:#1a1a19;border-radius:11px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .studio .scriptToolbar > span,:global(.theme-plaster) .studio .voiceParams label > span{color:#65625b}
+:global(.theme-plaster) .studio .voiceParams select,:global(.theme-plaster) .studio .editorFooter select{color:#75736a}
+:global(.theme-plaster) .studio .copyActions button{color:#65625b}
+:global(.theme-plaster) .studio .rightTabs button{color:#65625b}
+:global(.theme-plaster) .studio .rightTabs .activeRightTab{color:#1a1a19}
+:global(.theme-plaster) .studio .scriptBox textarea::placeholder{color:#65625b}
+:global(.theme-plaster) .studio .assistantWelcome h2{color:#65625b}
+:global(.theme-plaster) .studio .assistantWelcome p,:global(.theme-plaster) .studio .promptSuggestions button{color:#65625b}
+:global(.theme-plaster) .studio .assistantComposer textarea::placeholder{color:#65625b}
+:global(.theme-plaster) .editorHeader > select{color:#65625b;background:#f6f5f5}
+:global(.theme-plaster) .persistenceNotice{background:#ececea;color:#1a1a19}
+:global(.theme-plaster) .persistenceNotice button{border:1px solid #d0cfcb;background:#ffffff;border-radius:999px}
+:global(.theme-plaster) .studio button.avatarImage{background:#e9e8e7}
+:global(.theme-plaster) .studio .primaryButton,:global(.theme-plaster) .studio .generateButton{box-shadow:0 3px 0 rgb(30 27 22 / 0.078);border-radius:999px;font-weight:500}
+:global(.theme-plaster) .studio .primaryButton:hover:not(:disabled),:global(.theme-plaster) .studio .generateButton:hover:not(:disabled){box-shadow:0 6px 16px rgb(30 27 22 / 0.094)}
+:global(.theme-plaster) .sidebar{background:linear-gradient(180deg, #ffffff 70%, #eeedec)}
+:global(.theme-plaster) .sidebar a.activeNav{background:#e5e4e2;color:#2b2a27}
+:global(.theme-plaster) .sidebar a.activeNav svg{color:#1a1a19}
+:global(.theme-plaster) .main{background:#f5f4f4}
+:global(.theme-plaster) .studioIntro{border:1px solid #dad9d6;background:linear-gradient(rgb(255 255 255 / 0.282) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / 0.282) 1px, transparent 1px), linear-gradient(120deg, #e3e2e0 3%, #e7e6e5 50%, #efefed 100%);background-size:32px 32px, 32px 32px, 100% 100%;border-radius:22px}
+:global(.theme-plaster) .introEyebrow{color:#67655e}
+:global(.theme-plaster) .studio .studioIntro h1{font-weight:400}
+:global(.theme-plaster) .studioIntro mark{background:linear-gradient(transparent 60%, #eae9e7 60%)}
+:global(.theme-plaster) .studioIntro p{color:#5c5a54}
+:global(.theme-plaster) .introOrbit{border:1px dashed rgb(127 124 115 / 0.349)}
+:global(.theme-plaster) .introVoice{border:1px solid rgb(255 255 255 / 0.788);box-shadow:0 15px 45px rgb(30 27 22 / 0.09);background:rgb(255 255 255 / 0.78)}
+:global(.theme-plaster) .introVoice > svg{color:#1a1a19}
+:global(.theme-plaster) .introVoice > span{color:#6f6c64}
+:global(.theme-plaster) .introVoice b small{color:#737168}
+:global(.theme-plaster) .introWave i{background:#1a1a19}
+:global(.theme-plaster) .introWave i:nth-child(3n){background:#1a1a19}
+:global(.theme-plaster) .introAvatar{background:#edeceb;box-shadow:0 8px 20px rgb(30 27 22 / 0.071);border:1px solid #d5d4d0;border-radius:12px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .introTag{color:#76736a}
+:global(.theme-plaster) .studio .featureCard:hover{box-shadow:0 10px 25px rgb(30 27 22 / 0.071)}
+:global(.theme-plaster) .featureCard p{color:#77746c}
+:global(.theme-plaster) .featureCard div > span{color:#5d5b54}
+:global(.theme-plaster) .avatarCard:hover,:global(.theme-plaster) .workCard:hover{box-shadow:0 8px 20px rgb(30 27 22 / 0.063)}
+:global(.theme-plaster) .editor{background:linear-gradient(120deg, #ecebe9, #f1f1f0 75%)}
+:global(.theme-plaster) .editorMain,:global(.theme-plaster) .editorAside{box-shadow:0 3px 12px rgb(30 27 22 / 0.031)}
+:global(.theme-plaster) .editorHeader{background:rgb(255 255 255 / 0.937)}
+:global(.theme-plaster) .projectName input{color:#494742}
+:global(.theme-plaster) .studio .voiceSelector{color:#56544e;border-color:#d6d5d1;background:linear-gradient(110deg, #f2f2f1, #f5f5f4)}
+:global(.theme-plaster) .voiceSelector b{color:#403f3a;font-weight:500}
+:global(.theme-plaster) .voiceSelector small,:global(.theme-plaster) .voiceParams label > span,:global(.theme-plaster) .voiceParams label b,:global(.theme-plaster) .voiceParams select{color:#6b6860}
+:global(.theme-plaster) .voiceParams input[type=range]{accent-color:#1a1a19}
+:global(.theme-plaster) .scriptToolbar > span{color:#706d65}
+:global(.theme-plaster) .studio .scriptToolbar button{color:#1a1a19}
+:global(.theme-plaster) .scriptBox textarea{color:#383632}
+:global(.theme-plaster) .wordCount{color:#65625b}
+:global(.theme-plaster) .studio .copyActions button{color:#6b6961}
+:global(.theme-plaster) .assistantWelcome h2{color:#4b4944;font-weight:500}
+:global(.theme-plaster) .assistantWelcome p,:global(.theme-plaster) .studio .promptSuggestions button{color:#65625b}
+:global(.theme-plaster) .assistantComposer textarea{color:#4b4944}
+:global(.theme-plaster) .assistantComposer textarea::placeholder{color:#65625b}
+:global(.theme-plaster) .assistantComposer > div span{color:#65625b}
+:global(.theme-plaster) .studio .assistantComposer > div button{background:#272623}
+:global(.theme-plaster) .studio .rightTabs .activeRightTab{color:#383733;font-weight:500}
+:global(.theme-plaster) .activeRightTab::after{background:#c8c7c3}
+:global(.theme-plaster) .studio .dialog{box-shadow:0 32px 100px rgb(30 27 22 / 0.188)}
+:global(.theme-plaster) .dialog::backdrop{background:rgb(30 30 27 / 0.4)}
+:global(.theme-plaster) .studio{--ink:#262522;--muted:#6b6961;background:#efefee}
+:global(.theme-plaster) .main{background:#f3f3f2}
+:global(.theme-plaster) .pageHeading p,:global(.theme-plaster) .welcomeRow p,:global(.theme-plaster) .sectionHeading span{color:#6e6b63}
+:global(.theme-plaster) .studio .textButton{color:#1a1a19}
+:global(.theme-plaster) .studio .tabs > button{color:#6a675f}
+:global(.theme-plaster) .studio .tabs > button.activeTab{color:#1a1a19}
+:global(.theme-plaster) .sidebar a.activeNav{color:#1a1a19;background:#e5e5e3;box-shadow:inset 3px 0 #1e1b16}
+:global(.theme-plaster) .avatarCaption strong{color:#2c2a27}
+:global(.theme-plaster) .avatarCaption > span{color:#6b6861}
+:global(.theme-plaster) .avatarTag{color:#4e4d47}
+:global(.theme-plaster) .copyList b{color:#33322e}
+:global(.theme-plaster) .copyList p{color:#5f5c56}
+:global(.theme-plaster) .copyList time,:global(.theme-plaster) .workCard time,:global(.theme-plaster) .workCard p{color:#6d6b63}
+:global(.theme-plaster) .empty h3{color:#42403b;font-weight:500}
+:global(.theme-plaster) .empty p{color:#727067}
+:global(.theme-plaster) .editorMain,:global(.theme-plaster) .editorAside{box-shadow:0 2px 12px rgb(30 27 22 / 0.016)}
+:global(.theme-plaster) .editorHeader .tabs{background:#edeceb;border-radius:11px}
+:global(.theme-plaster) .studio .editorHeader .tabs button{color:#6b6860;border-radius:999px}
+:global(.theme-plaster) .studio .editorHeader .tabs button.activeTab{background:#ffffff;color:#1a1a19;box-shadow:0 1px 4px rgb(30 27 22 / 0.071)}
+:global(.theme-plaster) .editorHeader > select{background:#f2f2f1}
+:global(.theme-plaster) .projectName input{color:#373632;background:#f2f2f1}
+:global(.theme-plaster) .projectName span{color:#6e6b63}
+:global(.theme-plaster) .autosave{color:#65804b}
+:global(.theme-plaster) .portrait{background:#e9e9e7}
+:global(.theme-plaster) .portraitBadge{color:#413f3b}
+:global(.theme-plaster) .studio .selectAvatar{color:#1a1a19;border-color:#c6c5c0;background:#f0efee}
+:global(.theme-plaster) .portraitNote{color:#75726a}
+:global(.theme-plaster) .studio .voiceSelector{background:#ffffff;border-color:#d2d1ce;color:#1a1a19;box-shadow:0 3px 10px rgb(30 27 22 / 0.016)}
+:global(.theme-plaster) .voiceSelector b{color:#2f2e2b;font-weight:500}
+:global(.theme-plaster) .voiceSelector small{color:#75726a}
+:global(.theme-plaster) .studio .voiceParams label > span{color:#57554f}
+:global(.theme-plaster) .voiceParams label b{color:#595751}
+:global(.theme-plaster) .studio .voiceParams select{color:#4d4b45;background:#f2f2f1}
+:global(.theme-plaster) .voiceParams input[type=range]{accent-color:#1a1a19}
+:global(.theme-plaster) .scriptBox{border-color:#d2d1ce}
+:global(.theme-plaster) .scriptToolbar{border-bottom:1px solid #e7e7e5}
+:global(.theme-plaster) .studio .scriptToolbar > span{color:#42413c;font-weight:500}
+:global(.theme-plaster) .studio .scriptToolbar button{color:#1a1a19}
+:global(.theme-plaster) .scriptBox textarea{color:#32312d}
+:global(.theme-plaster) .studio .scriptBox textarea::placeholder{color:#88857c}
+:global(.theme-plaster) .wordCount{color:#837f76}
+:global(.theme-plaster) .studio .copyActions button{color:#1a1a19;border-color:#d6d5d2;background:#f3f3f2}
+:global(.theme-plaster) .editorFooter{background:#ffffff;box-shadow:0 -4px 16px rgb(30 27 22 / 0.02)}
+:global(.theme-plaster) .studio .generateButton{font-weight:500}
+:global(.theme-plaster) .studio .editorFooter select{color:#67645d}
+:global(.theme-plaster) .studio .rightTabs button{color:#69675f;border-radius:999px}
+:global(.theme-plaster) .studio .rightTabs .activeRightTab{color:#ffffff;background:#1a1a19;box-shadow:0 3px 8px rgb(30 27 22 / 0.145);font-weight:500}
+:global(.theme-plaster) .rightTabs button > span{background:#e7e7e5;color:#1a1a19}
+:global(.theme-plaster) .generationReview p,:global(.theme-plaster) .helpContent p,:global(.theme-plaster) .previewText{color:#5a5852}
+:global(.theme-plaster) .portraitEmpty{color:#8c8980;background:#ececea}
+:global(.theme-plaster) .portraitEmpty b{color:#57554f}
+:global(.theme-plaster) .portraitEmpty span{color:#7c7970}
+@media (max-width: 600px){:global(.theme-plaster) .editorFooter{border:1px solid #d6d4d1;box-shadow:0 -5px 22px rgb(30 27 22 / 0.086)}}
+:global(.theme-plaster) .workActions{border-top:1px solid #e9e9e7}
+:global(.theme-plaster) .studio{--ink:#2c2a27;--muted:#78756d;--border:#e1e1de}
+:global(.theme-plaster) .studio .dialog{scrollbar-color:#c8c6c2 transparent}
+:global(.theme-plaster) .dialogInner > header{background:#ffffff;border-bottom:1px solid #e9e8e7;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .dialogInner > p{color:#77746c}
+:global(.theme-plaster) .dialogFooter{background:#ffffff;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .dialogInner > p[role=alert]{border:1px solid #d9d8d5;color:#c84110;background:#f3f3f2;border-radius:12px}
+:global(.theme-plaster) .pageHeading p,:global(.theme-plaster) .welcomeRow p{color:#7b786f}
+:global(.theme-plaster) .copyList article > div > b{color:#45433e}
+:global(.theme-plaster) .copyList article > div > time{color:#858278}
+:global(.theme-plaster) .templateReview{background:#f2f2f1;border:1px solid #e5e4e2;border-radius:16px}
+:global(.theme-plaster) .templateReview > img{background:#e5e4e2;border-radius:11px}
+:global(.theme-plaster) .templateReview span{color:#838076}
+:global(.theme-plaster) .helpSteps > div{border:1px solid #e3e3e1;background:#f2f2f1;border-radius:15px}
+:global(.theme-plaster) .helpSteps > div > span{color:#1a1a19;background:#e5e5e3;border-radius:12px}
+:global(.theme-plaster) .helpSteps b{color:#474540;font-weight:500}
+:global(.theme-plaster) .helpSteps p{color:#868279}
+:global(.theme-plaster) .helpNotes{color:#716f66}
+:global(.theme-plaster) .statusCard{background:#ffffff}
+:global(.theme-plaster) .statusCard > svg{color:#1a1a19}
+:global(.theme-plaster) .statusCard p{color:#807d74}
+:global(.theme-plaster) .connectionNotice{background:#f0efee;border-bottom:1px solid #e0dfdc;color:#1a1a19}
+:global(.theme-plaster) .editingStudio .main>.editorHeader{border:1px solid #e2e1df}
+:global(.theme-plaster) .editingStudio{background:#ffffff;color:#33322e}
+:global(.theme-plaster) .editingStudio>.persistenceBody>.header{border-bottom:1px solid #e4e3e1;background:#ffffff}
+:global(.theme-plaster) .editingTitle button{background:#ebeae9!important;color:#65635c!important;border-radius:999px}
+:global(.theme-plaster) .editingStudio .workspace{background:#ffffff}
+:global(.theme-plaster) .editingProject{color:#87847a}
+:global(.theme-plaster) .editingStudio .accountAvatar{background:#ecebea;color:#65635c}
+:global(.theme-plaster) .editingStudio .returnSite{color:#87847a}
+:global(.theme-plaster) .studio .entryCard{background:#ffffff;border-radius:16px}
+:global(.theme-plaster) .studio .entryCard:hover{border-color:#c4c3be;box-shadow:0 8px 24px rgb(30 27 22 / 0.039)}
+:global(.theme-plaster) .studio .entryCard:focus-visible{outline:2px solid #1a1a19}
+:global(.theme-plaster) .studio .entryPrimary{border-color:#acaaa3}
+:global(.theme-plaster) .entryStep{color:#7b786f}
+:global(.theme-plaster) .entryCard h2{color:#1f1e1c;font-weight:500}
+:global(.theme-plaster) .entryCard h2 small{color:#1a1a19}
+:global(.theme-plaster) .entryCard p{color:#6e6b63}
+:global(.theme-plaster) .entryGo{color:#1a1a19}
+:global(.theme-plaster) .studio .projectSteps :is(button, a){color:#827f76}
+:global(.theme-plaster) .studio .projectSteps :is(button, a):hover{color:#33312e}
+:global(.theme-plaster) .studio .projectSteps :is(button, a):focus-visible{outline:2px solid #1a1a19}
+:global(.theme-plaster) .stepIndex{border:1px solid #cccbc7}
+:global(.theme-plaster) .projectSteps small{color:#1a1a19}
+:global(.theme-plaster) .studio .step_current :is(button, a){color:#1f1e1c;border-bottom-color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .step_current .stepIndex{border-color:#1a1a19;color:#1a1a19}
+:global(.theme-plaster) .studio .step_done :is(button, a){color:#55534d}
+:global(.theme-plaster) .step_done .stepIndex{border-color:#55534d;color:#55534d}
+:global(.theme-plaster) .studio .taskCenterButton{color:#43413d;border-radius:999px}
+:global(.theme-plaster) .studio .taskCenterButton:hover{border-color:#c4c3be}
+:global(.theme-plaster) .studio .taskCenterButton:focus-visible{outline:2px solid #1a1a19}
+:global(.theme-plaster) .taskCount{color:#1a1a19}
+:global(.theme-plaster) .taskPanel{background:#ffffff;box-shadow:0 18px 40px rgb(30 27 22 / 0.102);border-radius:16px;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .taskPanel header span{color:#7b786f}
+:global(.theme-plaster) .taskPanel li a{color:#252522}
+:global(.theme-plaster) .taskPanel li a:hover{background:#f1f0ef}
+:global(.theme-plaster) .taskStatus{color:#7b786f}
+:global(.theme-plaster) .taskAttention{color:#1a1a19;font-weight:500}
+:global(.theme-plaster) .taskEmpty,:global(.theme-plaster) .taskPanel > p{color:#7b786f}
+:global(.theme-plaster) .taskPanel footer{color:#6e6b63}
+:global(.theme-plaster) .taskPanel footer a{color:#1a1a19}
+:global(.theme-plaster) .creditBalance{color:#6a6760}
+:global(html.theme-plaster) .studio{--accent:#1b1a19;--ink:#1b1a19;--muted:#5b5953;--border:rgb(28 28 26 / 0.1);--soft:#eeeeed;background:#e8e8e6;color:#1b1a19}
+:global(html.theme-plaster) .studio button:focus-visible,:global(html.theme-plaster) .studio a:focus-visible{outline:2px solid rgb(234 76 19 / 0.8)}
+:global(html.theme-plaster) .studio :is(input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]), textarea, select){border:1px solid rgb(28 28 26 / 0.14);background:#ffffff;color:#1b1a19;caret-color:#ea4c13;border-radius:16px}
+:global(html.theme-plaster) .studio :is(input, textarea, select):focus{border-color:rgb(234 76 19 / 0.7);box-shadow:0 0 0 3px rgb(30 27 22 / 0.14)}
+:global(html.theme-plaster) .studio :is(input[type="checkbox"], input[type="radio"], input[type="range"], progress){accent-color:#ea4c13}
+:global(html.theme-plaster) .studio input::placeholder,:global(html.theme-plaster) .studio textarea::placeholder{color:#8c887f}
+:global(html.theme-plaster) .header{background:rgb(232 232 230 / 0.82);border-bottom:1px solid rgb(28 28 26 / 0.08)}
+:global(html.theme-plaster) :is(.brand em, .brand small, .brandDivider, .previewBadge, .returnSite){color:#716e66}
+:global(html.theme-plaster) .returnSite:hover{color:#1b1a19 !important}
+:global(html.theme-plaster) .studio .accountAvatar{background:#e2e1df;color:#1b1a19}
+:global(html.theme-plaster) .sidebar{border-right:1px solid rgb(28 28 26 / 0.08)}
+:global(html.theme-plaster) :is(.sideHome, .sidebar nav a){color:#5b5953}
+:global(html.theme-plaster) .sidebar a:hover{background:rgb(255 255 255 / 0.6);color:#1b1a19}
+:global(html.theme-plaster) .sidebar a.activeNav{background:#ffffff;color:#1b1a19;box-shadow:0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16)}
+:global(html.theme-plaster) .sidebar nav small{background:#e2e1df;color:#5b5953}
+:global(html.theme-plaster) .navGroup{color:#716e66}
+:global(html.theme-plaster) .sidePromo{background:#ffffff;color:#5b5953;box-shadow:0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16);border-radius:22px}
+:global(html.theme-plaster) .sidePromo > b{color:#1b1a19}
+:global(html.theme-plaster) .studio .sidePromo button{border-top-color:rgb(28 28 26 / 0.08);color:#1b1a19}
+:global(html.theme-plaster) .studio .primaryButton{background:#1b1a19;border-color:#1b1a19;color:#ffffff;box-shadow:0 1px 2px rgb(30 27 22 / 0.12), 0 10px 22px -12px rgb(30 27 22 / 0.45)}
+:global(html.theme-plaster) .studio .primaryButton:hover:not(:disabled){background:#1b1a19;border-color:#1b1a19;color:#ffffff}
+:global(html.theme-plaster) .studio .primaryButton:disabled{background:#e2e1df;border-color:#e2e1df;color:#716e66}
+:global(html.theme-plaster) .studio .outlineButton{background:#ffffff;border:1px solid rgb(28 28 26 / 0.14);color:#1b1a19}
+:global(html.theme-plaster) .studio .outlineButton:hover:not(:disabled){background:#ffffff;border-color:rgb(28 28 26 / 0.28)}
+:global(html.theme-plaster) .studio .textButton{color:#1b1a19}
+:global(html.theme-plaster) .studio .featureCard{background:#ffffff;box-shadow:0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16)}
+:global(html.theme-plaster) .studio .featureCard:hover{box-shadow:0 1px 2px rgb(30 27 22 / 0.06), 0 18px 36px -18px rgb(30 27 22 / 0.26)}
+:global(html.theme-plaster) .featureCard h2 small{border-color:rgb(28 28 26 / 0.14);color:#716e66}
+:global(html.theme-plaster) .featureCard > i{background:#eeeeed;color:#716e66}
+:global(html.theme-plaster) .studio :is(.avatarCard, .workCard, .voiceCard, .copyList article){border:1px solid rgb(28 28 26 / 0.08);background:#ffffff;border-radius:22px}
+:global(html.theme-plaster) .studio .avatarCard:hover{border-color:rgb(28 28 26 / 0.22)}
+:global(html.theme-plaster) .studio .selectedCard{border-color:#1b1a19;box-shadow:0 0 0 1px #1e1b16}
+:global(html.theme-plaster) :is(.avatarImage, .studio .workImage){background:#e2e1df}
+:global(html.theme-plaster) .search{border-color:rgb(28 28 26 / 0.14)}
+:global(html.theme-plaster) .search:focus-within{border-color:rgb(234 76 19 / 0.7);box-shadow:0 0 0 3px rgb(30 27 22 / 0.14)}
+:global(html.theme-plaster) .studio .pills button{color:#5b5953}
+:global(html.theme-plaster) .studio .pills button.activePill{background:#ffffff;border-color:rgb(28 28 26 / 0.14);color:#1b1a19}
+:global(html.theme-plaster) .studio .tabs > button.activeTab{color:#1b1a19}
+:global(html.theme-plaster) .activeTab::after{background:#ea4c13}
+:global(html.theme-plaster) .emptyIcon{background:#ffffff;color:#716e66}
+:global(html.theme-plaster) .empty h3{color:#1b1a19}
+:global(html.theme-plaster) .studio .dialog{border:1px solid rgb(28 28 26 / 0.08);box-shadow:0 1px 2px rgb(30 27 22 / 0.06), 0 30px 70px -24px rgb(30 27 22 / 0.3)}
+:global(html.theme-plaster) .dialog::backdrop{background:rgb(28 28 26 / 0.28)}
+:global(html.theme-plaster) .dialogFooter{background:#ffffff;border-top-color:rgb(28 28 26 / 0.08)}
+:global(html.theme-plaster) .studio .iconButton{color:#5b5953}
+:global(html.theme-plaster) .studio .iconButton:hover{background:#eeeeed;color:#1b1a19}
+:global(html.theme-plaster) .studio .generateButton{background:#1b1a19;border-color:#1b1a19;color:#ffffff;box-shadow:0 1px 2px rgb(30 27 22 / 0.12), 0 10px 22px -12px rgb(30 27 22 / 0.45)}
+:global(html.theme-plaster) .studio .generateButton:hover:not(:disabled){background:#1b1a19;border-color:#1b1a19;color:#ffffff}
+:global(html.theme-plaster) .studioIntro{background:linear-gradient(115deg, #e1e1de, #e9e8e7 60%, #e7e7e5);border:1px solid rgb(28 28 26 / 0.08)}
+:global(html.theme-plaster) .studioIntro mark{background:linear-gradient(transparent 88%, rgb(234 76 19 / 0.75) 88%, rgb(203 110 16 / 0.75) 94%, transparent 94%)}
+:global(html.theme-plaster) :is(.studioIntro p, .introEyebrow){color:#5b5953}
+:global(html.theme-plaster) .entryCard{background:#ffffff;box-shadow:0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16)}
+:global(html.theme-plaster) .entryCard:hover{background:#ffffff;box-shadow:0 1px 2px rgb(30 27 22 / 0.06), 0 18px 36px -18px rgb(30 27 22 / 0.26)}
+:global(html.theme-plaster) .entryPrimary{box-shadow:inset 0 2px 0 #1e1b16, 0 1px 2px rgb(30 27 22 / 0.05), 0 8px 20px -12px rgb(30 27 22 / 0.16)}
+:global(html.theme-plaster) :is(.creditBalance, .studio .taskCenterButton){border-color:rgb(28 28 26 / 0.14);background:#ffffff;color:#1b1a19}
+:global(html.theme-plaster) .taskAttention{color:#b63b0f}
+:global(html.theme-plaster) .taskPanel{background:#ffffff;border:1px solid rgb(28 28 26 / 0.08);box-shadow:0 1px 2px rgb(30 27 22 / 0.06), 0 30px 70px -24px rgb(30 27 22 / 0.3);border-radius:22px}
+:global(html.theme-plaster) .taskPanel li a:hover{background:#eeeeed}
+:global(html.theme-plaster) .editingStudio,:global(html.theme-plaster) .editingStudio .workspace{background:#e8e8e6;color:#1b1a19}
+:global(html.theme-plaster) .editingStudio > .persistenceBody > .header{background:rgb(232 232 230 / 0.82);border-bottom:1px solid rgb(28 28 26 / 0.08);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(html.theme-plaster) .studio .editingTitle button{background:#ffffff !important;color:#1b1a19 !important;border:1px solid rgb(28 28 26 / 0.14)}
+:global(html.theme-plaster) .studio .editingTitle button:hover{border-color:rgb(28 28 26 / 0.28)}
+:global(html.theme-plaster) .editingStudio .accountAvatar{background:#e2e1df;color:#1b1a19}
+:global(html.theme-plaster) .editingStudio .returnSite{color:#716e66}
+:global(html.theme-plaster) .editingStudio .main > .editorHeader{background:#ffffff;border-color:rgb(28 28 26 / 0.08);border-radius:19px}
+/* plaster:end */
+
+/* ---------- B11（r2）：导航序号与步骤条同一套 ① ② ③ ④，细线圆、无底色 ---------- */
+.navIndex { display: inline-grid; place-items: center; width: 18px; height: 18px; flex-shrink: 0; border: 1px solid rgb(30 28 24 / 22%); border-radius: 50%; font-size: 11px; line-height: 1; font-variant-numeric: tabular-nums; color: inherit; }
+.sidebar a.activeNav .navIndex { border-color: currentColor; }
+@media (max-width: 700px) { .navIndex { width: 15px; height: 15px; font-size: 10px; } }
+:global(html.theme-ember) .navIndex { border-color: rgb(237 234 228 / 28%); }
+
+/* ---------- B12（r2）：首页「进行中的批次」——一批一行，细线表格式，不用卡片和胶囊 ---------- */
+.activeBatches { margin: 0 0 22px; }
+.activeBatches h2 { margin: 0 0 8px; font-size: 14px; font-weight: 500; color: #1a1a19; }
+.activeBatches ul { list-style: none; margin: 0; padding: 0; border-top: 1px solid rgb(30 28 24 / 10%); }
+.activeBatches li { display: grid; grid-template-columns: 120px 56px minmax(0, 1fr) auto; align-items: center; gap: 16px; min-height: 52px; padding: 8px 0; border-bottom: 1px solid rgb(30 28 24 / 8%); font-size: 13px; }
+.batchDate { color: #5d5c59; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.batchCount { color: #73726e; font-variant-numeric: tabular-nums; }
+.batchWhere { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.batchWhere b { font-weight: 500; color: #1a1a19; white-space: nowrap; }
+.batchWhere small { font-size: 12px; color: #73726e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.studio .batchGo { display: inline-flex; align-items: center; gap: 6px; padding: 7px 14px; border: 1px solid rgb(30 28 24 / 14%); border-radius: 999px; background: #fff; color: #1a1a19; font-size: 13px; white-space: nowrap; transition: border-color .2s; }
+.studio .batchGo:hover { border-color: rgb(30 28 24 / 30%); }
+@media (max-width: 700px) {
+  .activeBatches li { grid-template-columns: auto auto minmax(0, 1fr); grid-template-areas: "date count go" "where where where"; gap: 4px 10px; padding: 10px 0; }
+  .batchDate { grid-area: date; font-size: 12px; } .batchCount { grid-area: count; font-size: 12px; }
+  .batchWhere { grid-area: where; flex-wrap: wrap; gap: 2px 8px; } .batchWhere small { white-space: normal; }
+  .studio .batchGo { grid-area: go; justify-self: end; padding: 5px 12px; font-size: 12px; }
+}
+:global(html.theme-ember) .activeBatches h2, :global(html.theme-ember) .batchWhere b { color: #f2ede6; }
+:global(html.theme-ember) .activeBatches ul, :global(html.theme-ember) .activeBatches li { border-color: rgb(255 240 225 / 10%); }
+:global(html.theme-ember) .studio .batchGo { background: transparent; color: #f2ede6; border-color: rgb(255 240 225 / 20%); }

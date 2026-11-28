@@ -652,10 +652,15 @@ class MaskedRepairProvider:
                 outcome=ProviderOutcome.FAILED,
                 provider_request_id=result.provider_request_id,
                 error_code=(review.error_code or "LOCAL_EDIT_VISUAL_REVIEW_FAILED"),
-                error_message=(
-                    review.error_message
-                    or review.summary
-                    or "图片已生成，审图暂未给出确定结论，请预览后选择。"
+                # Reviewer text is model output (usually English); keep it in the
+                # candidate's validation and give the customer fixed Chinese copy.
+                error_message=next(
+                    (
+                        text
+                        for text in (review.error_message, review.summary)
+                        if _is_chinese_copy(text)
+                    ),
+                    "图片已生成，审图暂未给出确定结论，请预览后选择。",
                 ),
                 usage_reported=usage_reported,
                 raw_usage=usage,
@@ -674,7 +679,8 @@ class MaskedRepairProvider:
                 provider_request_id=result.provider_request_id,
                 error_code="LOCAL_EDIT_VISUAL_REVIEW_REJECTED",
                 error_message=(
-                    review.summary or "The generated edit did not pass visual review."
+                    "系统检查发现修改效果有明显问题，修改版已保留，"
+                    "可预览后仍然采用，或调整要求再生成。"
                 ),
                 usage_reported=usage_reported,
                 raw_usage=usage,
@@ -1782,6 +1788,18 @@ def _outside_changed_pixels(
         if source_bytes[start : start + 4] != result_bytes[start : start + 4]:
             changed += 1
     return changed
+
+
+_HAN_CHARACTER = re.compile(r"[\u3400-\u9fff]")
+_LATIN_WORD = re.compile(r"[A-Za-z]{4,}")
+
+
+def _is_chinese_copy(text: object) -> bool:
+    """True for customer-facing Chinese copy, not English reviewer output."""
+
+    if not isinstance(text, str) or not _HAN_CHARACTER.search(text):
+        return False
+    return len(_LATIN_WORD.findall(text)) <= 2
 
 
 def _instruction_has_encoding_damage(instruction: str) -> bool:

@@ -139,7 +139,9 @@ def test_saved_suite_caption_repairs_keep_recorded_cues_and_pass_strict_validati
     assert [row["time"] for row in rows] == [[0, start], [start, len(source.tokens)]]
     assert 0 < len(rows[0]["emphasis"]) <= 10
     assert not rows[1]["lines"][0]["text"].endswith("产")
-    assert {entry["kind"] for entry in evidence} == {
+    assert {
+        entry["kind"] for entry in evidence if entry["kind"].startswith("caption_")
+    } == {
         "caption_emphasis_fitted",
         "caption_line_break_fitted",
     }

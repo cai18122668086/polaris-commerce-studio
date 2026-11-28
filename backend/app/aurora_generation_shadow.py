@@ -293,7 +293,7 @@ def build_execution_semantics_prompt(generation_request: Mapping[str, Any]) -> s
         f"页码={page_index}；页面角色={page.get('page_role', generation_request.get('page_role'))}；",
         f"构图原型={archetype or 'CURRENT_PAGE_ARCHETYPE'}。",
         "【身份硬锁】" + _join(identity.get("identity_summary")),
-        "[PRODUCT CONSISTENCY GATE] All attached product references are complementary views of one exact SKU. Preserve the same silhouette, proportions, wheel count and placement, red/black color partition, seat count, steering wheel, dashboard/music panel, grille, headlights, doors, steps, mirrors, labels, and component relationships. Do not average variants, merge parts, redraw logos, or add/remove/reshape visible components. A variant fact may remain copy-only unless the same component is visibly supported by the product references.",
+        "[PRODUCT CONSISTENCY GATE] All attached product references are complementary views of one exact SKU. Preserve the same silhouette, proportions, component count and placement, color partitions, materials, closures and fittings, logos, label wording character by character, and component relationships. Do not average variants, merge parts, redraw logos, or add/remove/reshape visible components. A variant fact may remain copy-only unless the same component is visibly supported by the product references.",
         "[FACTUAL COPY GATE] Use only exact user-entered fact strings; if no exact seed exists, use no claim text. Never invent brand comparisons, frequencies, voltages, sizes, safety ratings, certifications, or compatibility.",
         "Allowed exact fact seeds="
         + "display=" + _join(authorized.get("display_facts"))

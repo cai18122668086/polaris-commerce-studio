@@ -291,7 +291,7 @@ test("homepage search recommendations, hot cards, and task status cues stay scop
   assert.match(toolDirectory, /aria-label=\{searchResults\.length \? "功能搜索结果" : "相近场景推荐"\}/);
   assert.match(toolDirectory, /home-search-recommendation/);
   assert.match(toolDirectory, /home-command home-command--primary/);
-  assert.match(toolDirectory, /<HomeHero \/>[\s\S]*?<CreationStartHub \/>[\s\S]*?home-command home-command--primary/);
+  assert.match(toolDirectory, /<EmberHero \/>[\s\S]*?<CreationStartHub \/>[\s\S]*?home-command home-command--primary/);
   assert.match(toolDirectory, /event\.key === "Enter" && searchResults\.length/);
   assert.match(styles, /\.home-command--primary > label\s*\{[\s\S]*?min-height: 96px;/);
   assert.match(styles, /\.home-search-recommendation\.is-unavailable/);

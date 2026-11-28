@@ -1,0 +1,11 @@
+# 示例：每天北京时间 04:20（UTC 20:20）跑一次，流量最低的时段；Persistent=true 在关机错过后补跑。
+[Unit]
+Description=Daily Polaris backup
+
+[Timer]
+OnCalendar=*-*-* 20:20:00 UTC
+RandomizedDelaySec=10m
+Persistent=true
+
+[Install]
+WantedBy=timers.target

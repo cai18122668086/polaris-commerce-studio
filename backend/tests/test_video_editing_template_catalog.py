@@ -39,8 +39,12 @@ def test_catalog_retains_all_templates_without_changing_snapshots(tmp_path):
 
 @pytest.mark.parametrize("all_installed", [False, True])
 def test_bihuo_catalog_only_offers_music_when_a_default_is_installed(
-    tmp_path, all_installed
+    tmp_path, all_installed, monkeypatch
 ):
+    monkeypatch.setattr(
+        "app.video_editing_template_capabilities.foreground_available",
+        lambda settings: True,
+    )
     settings = Settings(_env_file=None, video_editing_tasks_dir=tmp_path)
     installed = (
         SUITE_MUSIC if all_installed else {"bihuo-33-v1": SUITE_MUSIC["bihuo-33-v1"]}

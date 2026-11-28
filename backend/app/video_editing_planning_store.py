@@ -9,6 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from . import video_credit_billing as video_credits
 from .auth import WorkspaceContext
 from .bihuo_suite.registry import ENGINE as BIHUO_ENGINE
 from .bihuo_suite.registry import definition as bihuo_definition
@@ -47,6 +48,7 @@ from .video_editing_task_models import (
     EditingSourceRecord,
     EditingTaskRecord,
 )
+from .video_editing_template_capabilities import suite_template_blocker
 from .video_editing_template_styles import style_blockers
 from .video_editing_transcript_store import (
     read_transcript_artifact,
@@ -81,7 +83,14 @@ def execution_available(settings: Settings) -> bool:
     return settings.video_editing_planning_enabled and planner_configured(settings)
 
 
-def require_active_planning_template(template_id: str | None) -> None:
+def require_active_planning_template(
+    template_id: str | None, settings: Settings | None = None
+) -> None:
+    if settings is not None:
+        # Fail before the paid planning call, not at render after paying.
+        blocker = suite_template_blocker(template_id, settings)
+        if blocker:
+            raise ApiError(409, "EDITING_TEMPLATE_CAPABILITY_UNAVAILABLE", blocker)
     if bihuo_template(template_id):
         from .bihuo_suite.registry import available
 
@@ -260,6 +269,67 @@ def planning_response(
     }
 
 
+def hold_planning(
+    session: Session, settings: Settings, row: EditingPlanningTaskRecord
+) -> None:
+    """Hold the paid model call and, for auto preview, the preview render."""
+    if row.mode != "generate":
+        return
+    video_credits.hold(
+        session,
+        settings,
+        row.workspace_id,
+        "editing_planning",
+        "video_planning",
+        row.id,
+    )
+    # Column defaults are applied on insert; a new row still has None here.
+    checkpoint, result = row.checkpoint or {}, row.result or {}
+    if checkpoint.get("auto_preview") and not result.get("preview_task_id"):
+        video_credits.hold(
+            session,
+            settings,
+            row.workspace_id,
+            "editing_render",
+            "video_planning",
+            row.id,
+        )
+
+
+def same_request_generate(
+    session: Session,
+    workspace: WorkspaceContext,
+    prepared: EditingPlanningTaskRecord,
+) -> EditingPlanningTaskRecord | None:
+    """The newest live/finished paid planning of exactly this prepared request.
+
+    Same request hash (speech, template, materials, settings) and the same
+    supplement choice (MG etc. is frozen in the snapshot, outside the model
+    request). Without a supplement this is the plain request-hash match.
+    """
+    request_sha = prepared.result.get("request_sha256")
+    if not request_sha:
+        return None
+    rows = session.scalars(
+        select(EditingPlanningTaskRecord)
+        .where(
+            EditingPlanningTaskRecord.workspace_id == workspace.workspace_id,
+            EditingPlanningTaskRecord.owner_user_id == workspace.principal.user_id,
+            EditingPlanningTaskRecord.project_id == prepared.project_id,
+            EditingPlanningTaskRecord.mode == "generate",
+            EditingPlanningTaskRecord.status.in_(("queued", "running", "completed")),
+            EditingPlanningTaskRecord.snapshot["expected_request_sha256"].as_string()
+            == request_sha,
+        )
+        .order_by(EditingPlanningTaskRecord.created_at.desc())
+        .limit(20)
+    )
+    supplement = prepared.snapshot.get("supplement")
+    return next(
+        (row for row in rows if row.snapshot.get("supplement") == supplement), None
+    )
+
+
 def create_planning_task(
     session: Session,
     workspace: WorkspaceContext,
@@ -289,7 +359,7 @@ def create_planning_task(
                 409, "EDITING_PLANNING_REQUEST_REUSED", "此请求编号已用于其他规划输入。"
             )
         return previous
-    require_active_planning_template(body.template_id)
+    require_active_planning_template(body.template_id, settings)
     if base.status != "completed" or base.library_release != MOTION_SHA256:
         raise ApiError(
             409,
@@ -335,6 +405,12 @@ def create_planning_task(
         ),
         "source_subtitles": base.options["source_subtitles"],
         **({"music": body.music} if body.music is not None else {}),
+        # W4: frozen only when chosen, so older snapshots stay byte-identical.
+        **(
+            {"supplement": body.supplement.model_dump(mode="json")}
+            if body.supplement is not None and body.supplement.mg is not None
+            else {}
+        ),
     }
     if body.template_id == APPLE_TEMPLATE_ID or bihuo_template(body.template_id):
         if base.options["source_subtitles"] != "none":
@@ -435,9 +511,22 @@ def create_planning_task(
         )
         if existing:
             return existing
+        # The same request (same speech, template, materials and settings gives
+        # the same request hash, and the same supplement, which is not part of
+        # the model request) already has a live or finished paid planning in
+        # this project. A refreshed page or a second check must join that result
+        # instead of paying again; a failed run may still be retried, and the
+        # user may confirm a deliberate re-plan (replan=true, charged again).
+        if not body.replan and same_request_generate(session, workspace, prepared):
+            raise ApiError(
+                409,
+                "EDITING_PLAN_ALREADY_GENERATED",
+                "这条口播已用同样的模板和素材剪过，请在结果区确认或下载，不会重复扣费。",
+            )
         require_active_planning_template(
             prepared.snapshot.get("overlay_template", {}).get("id")
         )
+        require_active_planning_template(prepared.snapshot.get("template_id"), settings)
         if not execution_available(settings):
             raise ApiError(
                 503,
@@ -512,6 +601,7 @@ def create_planning_task(
     )
     session.add(row)
     try:
+        hold_planning(session, settings, row)
         session.commit()
     except IntegrityError:
         session.rollback()

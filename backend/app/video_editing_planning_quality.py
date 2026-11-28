@@ -6,6 +6,17 @@ from .errors import ApiError
 from .video_editing_contracts import Transcript
 
 NATIVE_BINDING_POLICY = "tengli.native-binding-rules/1"
+# Prepared requests replay byte-for-byte; only new preparations get the counts.
+NATIVE_SLOT_COUNTS_POLICY = "tengli.native-slot-counts/1"
+NATIVE_SLOT_COUNTS_PROMPT = (
+    "full_library中带native_word_binding_contract.slot_counts的组，数量是固定的："
+    "text_paths、event_paths列出的每个路径都必须各绑定一次，"
+    "lists给出列表槽的确切项数（如Z-M03的/content/labels为3项），"
+    "relation_items须恰好为所给个数并用所给relation，"
+    "max_chars是各文字槽的可读字符上限。capacity.per_page不表示可以少填。"
+    "实录里没有这么多真实并列项或放不下时，改用其他组或Z-M00，"
+    "不得少填、合并或凑数。招牌组也一样：先在全文中找满足全部数量的一段再使用。"
+)
 NATIVE_BINDING_PROMPT = (
     "native_text、native_events、native_media 中每个 path 只能出现一次。"
     "按 native_word_binding_contract 完整绑定全部必需文字、事件和媒体字段；"

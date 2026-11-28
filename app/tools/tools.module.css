@@ -44,3 +44,95 @@
 
 /* Portrait modules retain whole input and output images. */
 .cardImage{aspect-ratio:3/4}.cardImage>img{object-fit:contain;background:#efede8}.caseArt{width:100%;height:100%;overflow:hidden}.toolCard:hover .caseArt img{transform:none}.spotlightArt{position:absolute;right:12px;top:12px;width:42%;height:calc(100% - 24px);display:block;overflow:hidden;border-radius:8px}.spotlightArt img{transform:none}.spotlight>div{max-width:54%}@media(max-width:640px){.spotlight{min-height:260px}.spotlight>div{max-width:100%}.spotlightArt{top:112px;right:10px;width:calc(100% - 20px);height:138px}}
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .page{color:#e9e8e6}
+:global(.theme-ember) .inspirationBanner{border:1px solid #22211e;background:linear-gradient(110deg,rgb(255 250 244 / 0.06),rgb(255 250 244 / 0.09) 60%,rgb(255 250 244 / 0.06));border-radius:19px}
+:global(.theme-ember) .inspirationBanner>span{color:#aca7a1}
+:global(.theme-ember) .inspirationBanner>strong{color:#c4c1bd}
+:global(.theme-ember) .inspirationBanner img{border:3px solid #0f0e0d;box-shadow:0 3px 6px rgb(0 0 0 / 0.141)}
+:global(.theme-ember) .welcome p{color:#68635c}
+:global(.theme-ember) .welcome>span{color:#65605a}
+:global(.theme-ember) .spotlight{border:1px solid #252321;background:rgb(255 250 244 / 0.06);border-radius:18px}
+:global(.theme-ember) .spotlight[data-tone=lime]{border-color:#211f1d;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .spotlight>div>span{color:#6b665f}
+:global(.theme-ember) .spotlight h2{color:#e9e8e6}
+:global(.theme-ember) .spotlight p{color:#817a72}
+:global(.theme-ember) .spotlight b{background:rgb(255 250 244 / 0.04);color:#cac7c3;border-radius:8px}
+:global(.theme-ember) .spotlight>img{border:7px solid #0f0e0d;box-shadow:0 3px 12px rgb(0 0 0 / 0.169)}
+:global(.theme-ember) .spotlight:hover{box-shadow:0 8px 22px rgb(0 0 0 / 0.113)}
+:global(.theme-ember) .spotlight:hover b{color:#e9e8e7;background:rgb(255 250 244 / 0.06)}
+:global(.theme-ember) .quickLinks>a{border:1px solid #1f1d1b;background:rgb(255 250 244 / 0.04);border-radius:14px}
+:global(.theme-ember) .quickLinks>a:hover{border-color:#3e3b37;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .quickLinks img,:global(.theme-ember) .quickIcon{background:rgb(255 250 244 / 0.06);color:#746e66;border-radius:9px}
+:global(.theme-ember) .quickLinks strong{color:#afaba5}
+:global(.theme-ember) .quickLinks small{color:#67625b}
+:global(.theme-ember) .quickLinks>a>svg{color:#59554f}
+:global(.theme-ember) .directoryHead h2{font-weight:500}
+:global(.theme-ember) .searchBox{border:1px solid #242220;background:rgb(255 250 244 / 0.04);color:#625d57;border-radius:11px}
+:global(.theme-ember) .searchBox:focus-within{border-color:#46433e;box-shadow:0 0 0 3px rgb(255 255 255 / 0.1)}
+:global(.theme-ember) .searchBox input{color:#b0aca6}
+:global(.theme-ember) .searchBox button{color:#716c65}
+:global(.theme-ember) .filterBar>span{color:#58544e}
+:global(.theme-ember) .filters button{color:#706b64;border-radius:999px}
+:global(.theme-ember) .filters button:hover{background:rgb(255 250 244 / 0.025);color:#b6b2ad}
+:global(.theme-ember) .filters button[aria-pressed=true]{color:#e9e8e7;background:rgb(255 250 244 / 0.025)}
+:global(.theme-ember) .toolCard{background:rgb(255 250 244 / 0.025);border-radius:15px}
+:global(.theme-ember) .toolCard:hover{border-color:#302d2a;background:rgb(255 250 244 / 0.04);box-shadow:0 8px 20px rgb(0 0 0 / 0.113)}
+:global(.theme-ember) .cardTitle h3{color:#cac8c4;font-weight:500}
+:global(.theme-ember) .cardTitle>span{background:rgb(255 250 244 / 0.025);color:#9b958e}
+:global(.theme-ember) .cardImage{background:rgb(255 250 244 / 0.06);border-radius:11px}
+:global(.theme-ember) .cardImage>span{color:#e7e6e5;background:rgb(21 20 19 / 0.86);-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-ember) .toolCard>p{color:#66615b}
+:global(.theme-ember) .cardFooter{color:#77716a}
+:global(.theme-ember) .emptyState{border:1px dashed #282624;color:#68635c;background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .emptyState h3{color:#a29d96}
+:global(.theme-ember) .emptyState button{background:rgb(255 250 244 / 0.025);color:#d8d6d3;border-radius:999px}
+:global(.theme-ember) .cardImage>img{background:rgb(255 250 244 / 0.06)}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .page{color:#272624}
+:global(.theme-plaster) .inspirationBanner{border:1px solid #e4e3e1;background:linear-gradient(110deg,#e8e7e5,#d6d5d2 60%,#eae9e8);border-radius:19px}
+:global(.theme-plaster) .inspirationBanner>span{color:#1a1a19}
+:global(.theme-plaster) .inspirationBanner>strong{color:#1a1a19}
+:global(.theme-plaster) .inspirationBanner img{border:3px solid #ffffff;box-shadow:0 3px 6px rgb(30 27 22 / 0.078)}
+:global(.theme-plaster) .welcome p{color:#9a9890}
+:global(.theme-plaster) .welcome>span{color:#9d9a92}
+:global(.theme-plaster) .spotlight{border:1px solid #e1e0de;background:#e8e8e6;border-radius:18px}
+:global(.theme-plaster) .spotlight[data-tone=lime]{border-color:#e5e4e2;background:#efefed}
+:global(.theme-plaster) .spotlight>div>span{color:#97958d}
+:global(.theme-plaster) .spotlight h2{color:#2d2c29}
+:global(.theme-plaster) .spotlight p{color:#858278}
+:global(.theme-plaster) .spotlight b{background:#ffffff;color:#4a4843;border-radius:8px}
+:global(.theme-plaster) .spotlight>img{border:7px solid #ffffff;box-shadow:0 3px 12px rgb(30 27 22 / 0.094)}
+:global(.theme-plaster) .spotlight:hover{box-shadow:0 8px 22px rgb(30 27 22 / 0.063)}
+:global(.theme-plaster) .spotlight:hover b{color:#242321;background:#eae9e7}
+:global(.theme-plaster) .quickLinks>a{border:1px solid #e8e7e5;background:#ffffff;border-radius:14px}
+:global(.theme-plaster) .quickLinks>a:hover{border-color:#c3c1bd;background:#f4f4f3}
+:global(.theme-plaster) .quickLinks img,:global(.theme-plaster) .quickIcon{background:#eae9e8;color:#1a1a19;border-radius:9px}
+:global(.theme-plaster) .quickLinks strong{color:#5e5b55}
+:global(.theme-plaster) .quickLinks small{color:#9c9991}
+:global(.theme-plaster) .quickLinks>a>svg{color:#a8a59f}
+:global(.theme-plaster) .directoryHead h2{font-weight:500}
+:global(.theme-plaster) .searchBox{border:1px solid #e2e1df;background:#ffffff;color:#a09e96;border-radius:11px}
+:global(.theme-plaster) .searchBox:focus-within{border-color:#bab9b3;box-shadow:0 0 0 3px #ffffff}
+:global(.theme-plaster) .searchBox input{color:#5d5b54}
+:global(.theme-plaster) .searchBox button{color:#928f86}
+:global(.theme-plaster) .filterBar>span{color:#a9a7a0}
+:global(.theme-plaster) .filters button{color:#939087;border-radius:999px}
+:global(.theme-plaster) .filters button:hover{background:#ededeb;color:#595650}
+:global(.theme-plaster) .filters button[aria-pressed=true]{color:#292825;background:#eeedec}
+:global(.theme-plaster) .toolCard{background:#f0efee;border-radius:15px}
+:global(.theme-plaster) .toolCard:hover{border-color:#d2d1cd;background:#ffffff;box-shadow:0 8px 20px rgb(30 27 22 / 0.063)}
+:global(.theme-plaster) .cardTitle h3{color:#494842;font-weight:500}
+:global(.theme-plaster) .cardTitle>span{background:#efeeed;color:#1a1a19}
+:global(.theme-plaster) .cardImage{background:#e8e7e5;border-radius:11px}
+:global(.theme-plaster) .cardImage>span{color:#363431;background:#ededeb;-webkit-backdrop-filter:blur(24px) saturate(1.3);backdrop-filter:blur(24px) saturate(1.3)}
+:global(.theme-plaster) .toolCard>p{color:#9c9992}
+:global(.theme-plaster) .cardFooter{color:#8d8a81}
+:global(.theme-plaster) .emptyState{border:1px dashed #dad9d7;color:#9a9890;background:#f4f4f3;border-radius:16px}
+:global(.theme-plaster) .emptyState h3{color:#68655e}
+:global(.theme-plaster) .emptyState button{background:#eeedec;color:#403e3a;border-radius:999px}
+:global(.theme-plaster) .cardImage>img{background:#e8e8e6}
+/* plaster:end */

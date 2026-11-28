@@ -11,6 +11,12 @@ from app.models import CrawlTaskRecord
 
 
 @pytest.fixture(autouse=True)
+def _crawler_admin(settings) -> None:
+    """真实商品爬虫接口仅限管理员；这里的用例以开发环境管理员身份调用。"""
+    settings.announcement_admin_emails = ["admin@example.com"]
+
+
+@pytest.fixture(autouse=True)
 def admin_access(client) -> None:
     client.app.state.settings.announcement_admin_emails = ["admin@example.com"]
 
@@ -128,7 +134,8 @@ def test_regular_user_cannot_select_or_operate_ecommerce_accounts(
         },
     )
     assert selected.status_code == 403
-    assert selected.json()["error"]["code"] == "ACCOUNT_SELECTION_ADMIN_REQUIRED"
+    # 普通用户连爬虫任务接口都无权调用，更不能指定平台账号
+    assert selected.json()["error"]["code"] == "ADMIN_REQUIRED"
 
     assert client.get("/api/ecommerce/accounts").status_code == 403
     assert client.post(

@@ -37,3 +37,53 @@
 @media(pointer:coarse){.close,.examples button,.footer button{min-height:44px;min-width:44px}.form textarea{font-size:16px}}
 
 .reviewCanvas { grid-column:1 / -1;border:0;background:transparent;overflow:visible; }
+
+/* ember-dark:start — 由 scripts/ember-dark-gen.py 生成，请勿手改 */
+:global(.theme-ember) .dialog{border:1px solid #282623;background:rgb(255 250 244 / 0.04);color:#e9e8e6;box-shadow:0 24px 100px rgb(0 0 0 / 0.395)}
+:global(.theme-ember) .dialog::backdrop{background:rgb(0 0 0 / 0.51)}
+:global(.theme-ember) .header{border-bottom:1px solid #1f1e1c}
+:global(.theme-ember) .header h2{font-weight:500}
+:global(.theme-ember) .header p{color:#8c867d}
+:global(.theme-ember) .close{background:rgb(255 250 244 / 0.025);color:#9e9992;border-radius:12px}
+:global(.theme-ember) .canvas{border:1px solid #252421;background:rgb(255 250 244 / 0.025);border-radius:16px}
+:global(.theme-ember) .controls h3{font-weight:500}
+:global(.theme-ember) .hint{color:#8c867e}
+:global(.theme-ember) .form label{color:#bfbbb6}
+:global(.theme-ember) .form textarea{border:1px solid #2a2825;background:rgb(255 250 244 / 0.025);color:#e4e2e0;border-radius:12px}
+:global(.theme-ember) .form textarea:disabled{color:#8e877f}
+:global(.theme-ember) .examples button,:global(.theme-ember) .footer button,:global(.theme-ember) .loadState button{border:1px solid #282623;background:rgb(255 250 244 / 0.04);color:#b3afa9;border-radius:999px}
+:global(.theme-ember) .count{color:#726c65}
+:global(.theme-ember) .cost{border-top:1px solid #211f1d;color:#aba6a0}
+:global(.theme-ember) .primary{background:#e9e8e7;color:#0f0e0d;border-radius:999px}
+:global(.theme-ember) .primary:hover:not(:disabled){background:rgb(255 250 244 / 0.06);color:#e9e8e7}
+:global(.theme-ember) .primary:disabled{background:rgb(255 250 244 / 0.06);color:#605c55}
+:global(.theme-ember) .error{background:rgb(255 250 244 / 0.025);color:#fa682a;border-radius:11px}
+:global(.theme-ember) .taskLink{color:#b0aba6}
+:global(.theme-ember) .footer{border-top:1px solid #1f1e1c;color:#827c74}
+:global(.theme-ember) .loadState{color:#7e7870}
+/* ember-dark:end */
+
+/* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
+:global(.theme-plaster) .dialog{border:1px solid #dbdad7;background:#ffffff;color:#282724;box-shadow:0 24px 100px rgb(30 27 22 / 0.22)}
+:global(.theme-plaster) .dialog::backdrop{background:rgb(27 26 25 / 0.408)}
+:global(.theme-plaster) .header{border-bottom:1px solid #e7e6e4}
+:global(.theme-plaster) .header h2{font-weight:500}
+:global(.theme-plaster) .header p{color:#7a776f}
+:global(.theme-plaster) .close{background:#ededec;color:#6b6861;border-radius:12px}
+:global(.theme-plaster) .canvas{border:1px solid #e1e0dd;background:#f2f2f1;border-radius:16px}
+:global(.theme-plaster) .controls h3{font-weight:500}
+:global(.theme-plaster) .hint{color:#7a776e}
+:global(.theme-plaster) .form label{color:#52504a}
+:global(.theme-plaster) .form textarea{border:1px solid #d8d7d4;background:#f2f2f1;color:#383733;border-radius:12px}
+:global(.theme-plaster) .form textarea:disabled{color:#79766d}
+:global(.theme-plaster) .examples button,:global(.theme-plaster) .footer button,:global(.theme-plaster) .loadState button{border:1px solid #dbdad7;background:#ffffff;color:#5b5952;border-radius:999px}
+:global(.theme-plaster) .count{color:#928f86}
+:global(.theme-plaster) .cost{border-top:1px solid #e6e5e3;color:#615f58}
+:global(.theme-plaster) .primary{background:#242321;color:#ffffff;border-radius:999px}
+:global(.theme-plaster) .primary:hover:not(:disabled){background:#eae9e7;color:#242321}
+:global(.theme-plaster) .primary:disabled{background:#e7e7e5;color:#a19f97}
+:global(.theme-plaster) .error{background:#efefee;color:#b23a0e;border-radius:11px}
+:global(.theme-plaster) .taskLink{color:#1a1a19}
+:global(.theme-plaster) .footer{border-top:1px solid #e7e6e4;color:#838077}
+:global(.theme-plaster) .loadState{color:#87847a}
+/* plaster:end */

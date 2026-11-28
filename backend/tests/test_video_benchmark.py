@@ -191,7 +191,7 @@ def test_search_pages_are_separately_submitted_deduplicated_and_private(benchmar
             "page_token": "",
             "sort": "most_liked",
             "publish_time": "one_week",
-            "limit": 10,
+            "limit": 20,
         },
     }
     assert calls[1] == {
@@ -202,7 +202,7 @@ def test_search_pages_are_separately_submitted_deduplicated_and_private(benchmar
     assert page["previous_task_id"] == first_id and page["page"] == 2
     assert page["duplicate_count"] == 1 and not page["has_more"]
     assert page["unknown_author_count"] == 1
-    missing, zero = page["items"]
+    zero, missing = page["items"]  # by likes: a known 0 ranks above unknown
     assert missing["collect_like_ratio"] is None and missing["like_count"] is None
     assert zero["like_count"] == 0 and zero["collect_like_ratio"] is None
     assert zero["posted_at"] is None and zero["duration_seconds"] is None

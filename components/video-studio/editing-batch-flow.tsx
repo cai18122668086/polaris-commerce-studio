@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Download, Film, RotateCcw, Upload, X } from "lucide-react";
+import { Check, Download, Film, History, RotateCcw, Shuffle, Upload, X } from "lucide-react";
 import { ApiError } from "@/lib/api/api-error";
 import { apiClient } from "@/lib/api/client";
 import { unwrapApiResponse } from "@/lib/api/request";
@@ -10,12 +10,12 @@ import { mediaUrl } from "@/lib/api/base-url";
 import { uploadWithProgress } from "@/lib/api/upload";
 import type { components } from "@/lib/api/generated/openapi";
 import type { GenerationJob } from "@/features/video-studio/library";
-import type { CostNote } from "@/features/video-studio/credit-notes";
+import { FREE_TRIAL_TEXT, isPriced, whenPriced, type CostNote } from "@/features/video-studio/credit-notes";
 import { editingHref, finishHref } from "@/features/video-studio/flow-params";
-import { editingMessage } from "@/features/video-studio/editing-presentation";
+import { editingMessage, isTemplateListed } from "@/features/video-studio/editing-presentation";
 import { templateAppearance } from "@/features/video-studio/template-appearance";
 import {
-  PROGRESS_LABELS, SOURCE_LABEL, batchFinished, batchPlan, candidateKey, durationLabel, generationSummary, itemStatus, shortCaptionHint, templateNeeds,
+  PROGRESS_LABELS, SOURCE_LABEL, batchFinished, batchPlan, candidateKey, durationLabel, finishAction, generationSummary, itemStatus, shortCaptionHint, templateNeeds,
   type EditingCandidate,
 } from "@/features/video-studio/editing-batch";
 import { DEFAULT_SUPPLEMENT, supplementForWorkItem, supplementSummary, type SupplementMaterialsValue, type SupplementWorkItem } from "@/features/video-studio/supplement-materials";
@@ -71,6 +71,10 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  /** B5 换模板重剪：正在确认的对象（一条或整批）和选的新模板 */
+  const [redoTarget, setRedoTarget] = useState<{ itemId: string } | { batch: true } | null>(null);
+  const [redoTemplate, setRedoTemplate] = useState("");
+  const redoRequest = useRef<{ key: string; id: string }>(undefined);
   const createRequest = useRef<{ key: string; id: string }>(undefined);
   const submitRequest = useRef<{ key: string; id: string }>(undefined);
 
@@ -287,7 +291,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
 
   // --- ④ submit -----------------------------------------------------------------------------
   const count = plan.kind === "existing" ? plan.itemIds.length : plan.kind === "create" ? plan.items.length : 0;
-  const summary = generationSummary(count, cost?.credits, 6, queue);
+  const summary = generationSummary(selected.filter(row => row.ready).slice(0, count).map(row => row.durationMs), cost?.credits, queue);
   const missingTemplate = !template;
   const generate = async () => {
     setBusy(true); setError(""); setNotice("");
@@ -318,6 +322,29 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
       setError(editingMessage(caught, "提交还在确认中，不会重复扣费；稍后刷新查看。"));
     } finally { setBusy(false); }
   };
+  const redoItems = (view?.editing ?? []).filter(row => row.phase === "done" || row.phase === "failed");
+  const redoCount = redoTarget ? ("batch" in redoTarget ? redoItems.length : 1) : 0;
+  const openRedo = (target: { itemId: string } | { batch: true }, current?: string | null) => {
+    setRedoTarget(target);
+    // Default to a different template than the one used: the point is to change it.
+    setRedoTemplate(templates.find(card => card.id !== current && isTemplateListed(card.id))?.id ?? "");
+  };
+  const redo = async () => {
+    if (!redoTarget || !redoTemplate || !batch) return;
+    setBusy(true); setError("");
+    // One request id per (target, template): a double click or a lost response never builds a second round.
+    const key = JSON.stringify([redoTarget, redoTemplate]);
+    if (redoRequest.current?.key !== key) redoRequest.current = { key, id: crypto.randomUUID() };
+    const body = { request_id: redoRequest.current.id, template_id: redoTemplate, music: "template" as const };
+    try {
+      const result = unwrapApiResponse("batch" in redoTarget
+        ? await apiClient.POST(`${root}/work-batches/{batch_id}/editing-redo`, { params: { path: { workspace_id: workspaceId, batch_id: batch.id } }, signal: AbortSignal.timeout(30000), body })
+        : await apiClient.POST(`${root}/work-items/{item_id}/editing-redo`, { params: { path: { workspace_id: workspaceId, item_id: redoTarget.itemId } }, signal: AbortSignal.timeout(20000), body }));
+      setView(result); setBatch(result.batch); setRedoTarget(null);
+      setNotice("已开始重剪，旧成片保留在「上一版」里。剪完后到成片页可以重新生成封面。");
+    } catch (caught) { setError(editingMessage(caught, "重剪还在确认中，不会重复扣费；稍后刷新查看。")); }
+    finally { setBusy(false); }
+  };
   const retry = async (itemId: string) => {
     setBusy(true); setError("");
     try {
@@ -339,7 +366,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
 
   return <section className={styles.flow} aria-label="批量剪辑">
     <ol className={styles.steps} aria-label="剪辑步骤">{STEP_TITLES.map((title, index) => <li key={title} data-state={stepState(index)}>
-      <a href={`#editing-step-${index + 1}`}><span>{stepState(index) === "done" ? <Check size={12} /> : index + 1}</span>{title}</a>
+      <a href={`#editing-step-${index + 1}`} aria-current={stepState(index) === "current" ? "step" : undefined}>{index + 1} · {title}{stepState(index) === "done" && <Check size={12} aria-label="已完成" />}</a>
     </li>)}</ol>
 
     {!started && <>
@@ -381,7 +408,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
         {selected.length > 1 && <label className={styles.switch}><input type="checkbox" checked={perItem} onChange={event => setPerItem(event.target.checked)} />每条单独选模板</label>}
         {perItem && <ul className={styles.perItem}>{selected.map((row, index) => {
           return <li key={row.key}><span>{row.title || `视频 ${index + 1}`}</span><select aria-label={`${row.title} 的模板`} value={itemTemplates[row.key] ?? template?.id ?? ""} onChange={event => setItemTemplates(current => ({ ...current, [row.key]: event.target.value }))}>
-            {templates.filter(card => !card.id.startsWith("chenxi")).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
+            {templates.filter(card => isTemplateListed(card.id)).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
           </select></li>;
         })}</ul>}
       </section>
@@ -399,10 +426,10 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
           <div><dt>视频</dt><dd>{count} 条</dd></div>
           <div><dt>模板</dt><dd>{perItem ? "每条单独选" : template ? templateAppearance(template).name : "未选"}</dd></div>
           <div><dt>素材</dt><dd>{supplementSummary(supplement)}</dd></div>
-          <div><dt>积分</dt><dd>{count ? summary.credits : "—"}</dd></div>
+          <div><dt>积分</dt><dd>{count ? summary.credits ?? FREE_TRIAL_TEXT : "—"}</dd></div>
           <div><dt>耗时</dt><dd>{count ? summary.time : "—"}</dd></div>
         </dl>
-        <p className={styles.fine}>预览确认已合并到生成里：每条剪完自动导出高清，不满意可以在结果里「精修这一条」或重新编排。重复点击不会重复扣费。</p>
+        <p className={styles.fine}>预览确认已合并到生成里：每条剪完自动导出高清，不满意可以在结果里「精修这一条」或「换模板重剪」。{whenPriced(cost?.credits, "重复点击不会重复扣费。")}</p>
         {cost?.insufficient && <p role="alert" className={styles.error}>积分不足，充值后再生成。</p>}
         <button type="button" className={styles.primary} disabled={busy || !count || missingTemplate || supplement.pending > 0 || !!cost?.insufficient} onClick={() => void generate()}>
           {busy ? "正在提交…" : supplement.pending > 0 ? "素材还在准备…" : count ? `开始剪辑 ${count} 条` : "先选视频"}
@@ -415,7 +442,17 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
     {notice && <p role="status" className={styles.fine}>{notice}</p>}
 
     {started && view && <section id="editing-batch-results" className={styles.step} aria-label="剪辑结果">
-      <header><h2>剪辑结果</h2><p>{progress.finished ? `完成 ${progress.done} 条${progress.failed ? `，${progress.failed} 条未完成可重试` : ""}` : `进行中 ${progress.active} 条 · 已完成 ${progress.done} 条。剪辑服务全站按顺序处理，每人最多同时处理 ${view.parallel_limit} 条，其余自动排队；可以关掉页面，回来刷新即可。`}</p></header>
+      <header className={styles.resultsHead}><div><h2>剪辑结果</h2><p>{progress.finished ? `完成 ${progress.done} 条${progress.failed ? `，${progress.failed} 条未完成可重试` : ""}` : `进行中 ${progress.active} 条 · 已完成 ${progress.done} 条。剪辑服务全站按顺序处理，每人最多同时处理 ${view.parallel_limit} 条，其余自动排队；可以关掉页面，回来刷新即可。`}</p></div>
+        {redoItems.length > 1 && !redoTarget && <button type="button" className={styles.secondary} disabled={busy} onClick={() => openRedo({ batch: true }, redoItems[0]?.template_id)}><Shuffle size={13} />整批换模板重剪</button>}
+      </header>
+      {redoTarget && <div className={styles.redo} role="dialog" aria-label="换模板重剪">
+        <b>{"batch" in redoTarget ? `整批换模板重剪（${redoCount} 条）` : "这一条换模板重剪"}</b>
+        <label><span>新模板</span><select aria-label="重剪用的模板" value={redoTemplate} onChange={event => setRedoTemplate(event.target.value)}>
+          {templates.filter(card => isTemplateListed(card.id)).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
+        </select></label>
+        <p className={styles.fine}>会用同一条口播按新模板重新编排、生成一次（口播识别结果直接复用）。{isPriced(cost?.credits) ? `每条 ${cost?.credits} 积分，共 ${(cost?.credits ?? 0) * redoCount} 积分。` : `${FREE_TRIAL_TEXT}。`}旧成片会保留在「上一版」里，可以随时查看、下载；剪完后成片页会提示重新生成封面。</p>
+        <div className={styles.redoActions}><button type="button" className={styles.primary} disabled={busy || !redoTemplate} onClick={() => void redo()}>{busy ? "正在提交…" : `确认重剪${redoCount > 1 ? ` ${redoCount} 条` : ""}`}</button><button type="button" className={styles.secondary} disabled={busy} onClick={() => setRedoTarget(null)}>取消</button></div>
+      </div>}
       <div className={styles.results}>{view.editing.map(row => {
         const item = items.find(entry => entry.id === row.item_id);
         const status = itemStatus(row);
@@ -430,13 +467,18 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
             <div className={styles.actions}>
               {row.final_url && <a href={mediaUrl(row.final_url)} download><Download size={13} />下载</a>}
               {row.can_retry && <button type="button" disabled={busy} onClick={() => void retry(row.item_id)}><RotateCcw size={13} />重试这一条</button>}
+              {(row.phase === "done" || row.phase === "failed") && <button type="button" disabled={busy} onClick={() => openRedo({ itemId: row.item_id }, row.template_id)}><Shuffle size={13} />换模板重剪</button>}
               {row.render_task_id && row.project_id && (row.phase === "done" || row.phase === "failed") && <a href={`/video-studio/editing?project=${encodeURIComponent(row.project_id)}&mode=refine&item=${encodeURIComponent(row.item_id)}${batch ? `&batch=${encodeURIComponent(batch.id)}` : ""}#editing-task-${row.render_task_id}`}>精修这一条</a>}
             </div>
+            {(row.history?.length ?? 0) > 0 && <ul className={styles.history} aria-label="上一版">{row.history?.map(old => <li key={old.attempt}>
+              <History size={12} />{old.final_url ? <a href={mediaUrl(old.final_url)} target="_blank" rel="noreferrer">第 {old.attempt} 版 · {nameOf(old.template_id) || "原模板"}</a> : <span>第 {old.attempt} 版 · {nameOf(old.template_id) || "原模板"}（未剪完）</span>}
+            </li>)}</ul>}
           </div>
         </article>;
       })}</div>
-      {progress.done > 0 && batch && <div className={styles.next}>
-        <button type="button" className={styles.primary} disabled={!progress.finished} onClick={() => router.push(finishHref({ batch: batch.id }))}>{progress.finished ? `去成片（${progress.done} 条）` : "全部完成后可以去成片"}</button>
+      {progress.canFinish && batch && <div className={styles.next}>
+        <button type="button" className={styles.primary} onClick={() => router.push(finishHref({ batch: batch.id }))}>{finishAction(progress).label}</button>
+        {finishAction(progress).note && <p className={styles.fine}>{finishAction(progress).note}</p>}
       </div>}
     </section>}
   </section>;

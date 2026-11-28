@@ -206,6 +206,7 @@ def confirm(
         if item.stage == "talking"
         and item.status == "pending"
         and not item.generation_task_id
+        and item.deleted_at is None  # 从我的作品删掉的条目不再生成
     ]
     waiting_now = [item for item in items if waiting(item)]
     check_batch_credits(session, settings, workspace_id, len(fresh) + len(waiting_now))
@@ -485,9 +486,14 @@ def retry_talking(
     """
     require_workspace_write(workspace)
     item = session.get(VideoWorkItemRecord, item_id)
-    if item is None or (item.workspace_id, item.owner_user_id) != (
-        workspace.workspace_id,
-        workspace.principal.user_id,
+    if (
+        item is None
+        or item.deleted_at is not None
+        or (item.workspace_id, item.owner_user_id)
+        != (
+            workspace.workspace_id,
+            workspace.principal.user_id,
+        )
     ):
         raise ApiError(404, "VIDEO_WORK_ITEM_NOT_FOUND", "未找到这条作品。")
     batch = _own_batch(session, workspace, item.batch_id)

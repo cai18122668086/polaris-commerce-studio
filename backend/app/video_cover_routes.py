@@ -15,10 +15,13 @@ and final title/body onto the work item (contract C2) and marks it done.
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import io
 import logging
+import os
 import shutil
+import threading
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -680,6 +683,11 @@ def list_candidates(
     query = select(VideoCoverCandidateRecord).where(
         VideoCoverCandidateRecord.workspace_id == workspace.workspace_id,
         VideoCoverCandidateRecord.owner_user_id == workspace.principal.user_id,
+        # 清理任务删掉文件的旧候选（B14）不再出现在列表里
+        or_(
+            VideoCoverCandidateRecord.error_code.is_(None),
+            VideoCoverCandidateRecord.error_code != "COVER_EXPIRED",
+        ),
     )
     filters = []
     if work_item_id:
@@ -881,7 +889,11 @@ def work_poster(
         / "posters"
         / f"{kind}-{task_id}-{key}.jpg"
     )
-    if not target.is_file():
+    if target.is_file():
+        # 记下最近访问时间，海报缓存按它淘汰（B14）
+        with contextlib.suppress(OSError):
+            os.utime(target)
+    else:
         try:
             compose.make_poster(video, target)
         except compose.CoverComposeError:
@@ -980,11 +992,16 @@ def recover_interrupted(
     return len(jobs)
 
 
-def start_recovery(application: Any) -> None:
-    """Called from the API lifespan: resume interrupted covers in the background."""
+def start_recovery(application: Any) -> threading.Thread | None:
+    """Called from the API lifespan: resume interrupted covers in the background.
 
-    import threading
+    Only the video API runs it. Core roles (api, detail-api, worker, ...) share
+    the same app but have video providers disabled and no access to the video
+    files, so there it would mark covers the video API is still making as failed.
+    """
 
+    if not getattr(application.state.settings, "video_providers_enabled", False):
+        return None
     started = datetime.now(UTC)
 
     def run() -> None:
@@ -1003,4 +1020,6 @@ def start_recovery(application: Any) -> None:
         except Exception:
             logger.exception("video_cover_recovery_failed")
 
-    threading.Thread(target=run, name="video-cover-recovery", daemon=True).start()
+    thread = threading.Thread(target=run, name="video-cover-recovery", daemon=True)
+    thread.start()
+    return thread

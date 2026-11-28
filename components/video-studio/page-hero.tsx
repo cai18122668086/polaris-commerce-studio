@@ -35,7 +35,7 @@ function MotifScene({ motif, compact = false }: { motif: Motif; compact?: boolea
  * a sentence, small label/value facts and the page's main actions, beside an
  * abstract scene for what the page does. Same structure on every page.
  */
-export function PageHero({ eyebrow, title, accent, description, facts = [], actions, motif }: {
+export function PageHero({ eyebrow, title, accent, description, facts = [], actions, motif, compact = false }: {
   eyebrow: string;
   title: string;
   accent?: string;
@@ -43,7 +43,17 @@ export function PageHero({ eyebrow, title, accent, description, facts = [], acti
   facts?: { label: string; value: ReactNode }[];
   actions?: ReactNode;
   motif: Motif;
+  /** C9：页面已有批次或结果时传 true——头图收成一行标题 + 一句说明（无插画、无眉标），把首屏让给结果区。 */
+  compact?: boolean;
 }) {
+  if (compact) return <section className={styles.heroCompact}>
+    <div className={styles.compactCopy}>
+      <h1>{title}{accent && <em>{accent}</em>}</h1>
+      <p>{description}</p>
+    </div>
+    {facts.length > 0 && <dl className={styles.compactFacts}>{facts.map(fact => <div key={fact.label}><dt>{fact.label}</dt><dd>{fact.value}</dd></div>)}</dl>}
+    {actions && <div className={styles.compactActions}>{actions}</div>}
+  </section>;
   return <section className={styles.hero}>
     <div className={styles.copy}>
       <span className={styles.eyebrow}>{eyebrow}</span>

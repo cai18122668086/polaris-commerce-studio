@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type TouchEvent } from "react";
 import { ChevronLeft, ChevronRight, Copy, Download, Pause, Play, Volume2, VolumeX, X } from "lucide-react";
 import { mediaUrl } from "@/lib/api/base-url";
 import { finishHref } from "@/features/video-studio/flow-params";
@@ -31,6 +31,10 @@ export function PhonePreview({ workspaceId, cards, current, accountName, onMove,
   const tab = view.key === current.key ? view.tab : "post";
   const setPaused = (value: boolean) => setView({ key: current.key, paused: value, tab });
   const setTab = (value: "post" | "script") => setView({ key: current.key, paused, tab: value });
+  // B3：画面下方的一行「@账号 · 标题」默认收起，点一下展开标题和正文；切换作品时回到收起。
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const expanded = expandedKey === current.key;
+  const touch = useRef<{ x: number; y: number } | null>(null);
   const previous = neighbour(cards, current.key, -1);
   const next = neighbour(cards, current.key, 1);
   const posterSource = current.coverId ? coverImageUrl(workspaceId, current.coverId) : posterPath(workspaceId, current);
@@ -69,6 +73,17 @@ export function PhonePreview({ workspaceId, cards, current, accountName, onMove,
     if (!element) return;
     if (element.paused) { void element.play(); setPaused(false); } else { element.pause(); setPaused(true); }
   };
+  // 手机上左右滑动切换（水平位移 > 56px 且大于竖直位移，避免和页面上下滚动冲突）。
+  const onTouchStart = (event: TouchEvent) => { const t = event.touches[0]; touch.current = t ? { x: t.clientX, y: t.clientY } : null; };
+  const onTouchEnd = (event: TouchEvent) => {
+    const start = touch.current; touch.current = null;
+    const t = event.changedTouches[0];
+    if (!start || !t) return;
+    const dx = t.clientX - start.x, dy = t.clientY - start.y;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx < 0 && next) onMove(next.key);
+    else if (dx > 0 && previous) onMove(previous.key);
+  };
   const copy = async (text: string, label: string) => {
     if (!text.trim()) { notify(`这条作品还没有${label}`, "info"); return; }
     try { await navigator.clipboard.writeText(text); notify(`${label}已复制`, "success"); }
@@ -81,17 +96,22 @@ export function PhonePreview({ workspaceId, cards, current, accountName, onMove,
     <button type="button" className={`${styles.previewNav} ${styles.previewNext}`} disabled={!next} onClick={() => next && onMove(next.key)} aria-label="下一条（→）"><ChevronRight size={22} /></button>
     <div className={styles.previewBody}>
       <div className={styles.phone}>
-        <div className={styles.phoneScreen}>
-          {src ? <video key={current.key} ref={player} className={styles.phoneVideo} src={mediaUrl(src)} poster={cover} autoPlay muted={muted} loop playsInline onClick={toggle} onPause={() => setPaused(true)} onPlay={() => setPaused(false)} />
-            : cover ? <img className={styles.phoneVideo} src={cover} alt="" /> : <div className={styles.phoneEmpty}>视频读取中</div>}
-          {/* Like the feed: account and one title line only; body and topics stay in the side panel. */}
-          <div className={styles.phoneOverlay}>
-            <span className={styles.phoneAccount}>@{accountName}</span>
-            <b>{current.title}</b>
+        <div className={styles.phoneScreen} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
+          {/* 视频按 9:16 放在上部，叠字放在画面下方的条里：任何模板的字幕都不会被压住。 */}
+          <div className={styles.phoneStage}>
+            {src ? <video key={current.key} ref={player} className={styles.phoneVideo} src={mediaUrl(src)} poster={cover} autoPlay muted={muted} loop playsInline onClick={toggle} onPause={() => setPaused(true)} onPlay={() => setPaused(false)} />
+              : cover ? <img className={styles.phoneVideo} src={cover} alt="" /> : <div className={styles.phoneEmpty}>视频读取中</div>}
           </div>
-          <div className={styles.phoneControls}>
-            <button type="button" onClick={toggle} aria-label={paused ? "播放" : "暂停"}>{paused ? <Play size={16} /> : <Pause size={16} />}</button>
-            <button type="button" onClick={() => { const next = !muted; setMuted(next); if (player.current) player.current.muted = next; }} aria-label={muted ? "打开声音" : "静音"}>{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
+          <div className={`${styles.phoneOverlay} ${expanded ? styles.phoneOverlayOpen : ""}`}>
+            <button type="button" className={styles.phoneCaption} aria-expanded={expanded} onClick={() => setExpandedKey(expanded ? null : current.key)} title={expanded ? "收起" : "展开标题和正文"}>
+              <span className={styles.phoneAccount}>@{accountName}</span>
+              <b>{current.title}</b>
+              {expanded && current.body && <span className={styles.phoneBody}>{current.body}</span>}
+            </button>
+            <div className={styles.phoneControls}>
+              <button type="button" onClick={toggle} aria-label={paused ? "播放" : "暂停"}>{paused ? <Play size={15} /> : <Pause size={15} />}</button>
+              <button type="button" onClick={() => { const next = !muted; setMuted(next); if (player.current) player.current.muted = next; }} aria-label={muted ? "打开声音" : "静音"}>{muted ? <VolumeX size={15} /> : <Volume2 size={15} />}</button>
+            </div>
           </div>
         </div>
       </div>
@@ -114,7 +134,7 @@ export function PhonePreview({ workspaceId, cards, current, accountName, onMove,
           <button type="button" className={styles.ghost} onClick={() => void copy(current.body, "正文")}><Copy size={15} />复制正文</button>
         </div>
         {current.itemId && <a className={styles.linkButton} href={finishHref({ item: current.itemId })}>重新编辑封面和文案</a>}
-        <p className={styles.keys}>← → 切换作品 · Esc 关闭</p>
+        <p className={styles.keys}><span className={styles.keysDesk}>← → 切换作品 · Esc 关闭</span><span className={styles.keysTouch}>在视频上左右滑动切换作品</span></p>
       </aside>
     </div>
   </div>;

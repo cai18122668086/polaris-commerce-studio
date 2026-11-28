@@ -17,3 +17,10 @@ test("深青标题 stays hidden until its caption contrast is fixed", () => {
   assert.equal(isTemplateListed("bihuo-24-v1"), false);
   assert.equal(templateEntry("bihuo-24-v1")?.[1], "深青标题");
 });
+
+test("快讯直播 stays hidden until long captions can wrap", () => {
+  assert.equal(isTemplateListed("bihuo-23-v1"), false);
+  assert.equal(templateEntry("bihuo-23-v1")?.[1], "快讯直播");
+  // 新闻资讯 still offers its other looks.
+  for (const id of ["bihuo-14-v1", "bihuo-28-v1", "bihuo-33-v1"]) assert.equal(isTemplateListed(id), true, id);
+});

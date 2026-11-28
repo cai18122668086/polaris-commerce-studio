@@ -82,10 +82,46 @@
   .headActions { width: 100%; }
 }
 
+
+/* 第二轮 L7：平台多选卡片、条数步进器、分配预览、按平台分组。 */
+.platformCards { display: grid; grid-template-columns: repeat(2, minmax(0, 220px)); gap: 10px; }
+.platformCards label { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; min-width: 0; }
+.platformCards label[data-active] { border-color: var(--ink); }
+.platformCards input { position: absolute; opacity: 0; pointer-events: none; }
+.platformCards label:has(input:focus-visible) { outline: 2px solid var(--ink); outline-offset: 2px; }
+.box { flex: none; width: 18px; height: 18px; margin-top: 1px; border: 1px solid var(--border); border-radius: 4px; display: grid; place-items: center; color: var(--aw-surface); }
+.platformCards label[data-active] .box { background: var(--ink); border-color: var(--ink); }
+.cardText { display: grid; gap: 2px; min-width: 0; }
+.cardText b { font-size: 14px; font-weight: 600; }
+.cardText small { font-size: 12px; color: var(--muted); }
+.countRow { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.stepper { display: inline-flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.stepper[data-invalid] { border-color: #b42318; }
+.stepper button { width: 34px; border: 0; background: none; color: var(--ink); display: grid; place-items: center; cursor: pointer; }
+.stepper button:disabled { color: var(--muted); opacity: .45; cursor: default; }
+.stepper input { width: 44px; border: 0; border-left: 1px solid var(--border); border-right: 1px solid var(--border); text-align: center; font: inherit; font-size: 14px; font-variant-numeric: tabular-nums; padding: 7px 0; background: var(--aw-surface); color: var(--ink); }
+.stepper input:focus { outline: none; }
+.split { font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.laneStatus { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: 13px; }
+.laneStatus li { display: flex; gap: 12px; }
+.laneStatus li b { font-weight: 500; min-width: 3.5em; }
+.laneStatus li span { color: var(--muted); }
+.laneStatus li[data-failed] span { color: var(--ink); }
+.notice { margin: 0; padding: 10px 14px; border-left: 2px solid var(--aw-warm); font-size: 13px; line-height: 1.7; background: color-mix(in srgb, var(--aw-warm) 5%, transparent); }
+.group { display: grid; gap: 10px; }
+.group + .group { padding-top: 6px; }
+.groupHead { margin: 0; font-size: 14px; font-weight: 600; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+@media (max-width: 720px) {
+  .platformCards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
 /* plaster:start — 由 scripts/plaster-gen.py 生成，请勿手改 */
 :global(.theme-plaster) .page{--aw-warm:#c74110;--aw-surface:#ffffff}
 :global(.theme-plaster) .label{font-weight:500}
 :global(.theme-plaster) .platforms label[data-active]{font-weight:500}
 :global(.theme-plaster) .tabs button[aria-selected="true"]{font-weight:500}
 :global(.theme-plaster) .error{color:#b23a0e}
+:global(.theme-plaster) .cardText b{font-weight:500}
+:global(.theme-plaster) .stepper[data-invalid]{border-color:#b23a0e}
+:global(.theme-plaster) .groupHead{font-weight:500}
 /* plaster:end */

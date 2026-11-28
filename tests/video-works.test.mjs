@@ -92,3 +92,10 @@ test("works without a cover get a server-cut poster whenever a video exists", ()
   assert.equal(posterPath(ws, editCard({ task_id: "e9", project_id: "p", project_title: "x", created_at: "2026-11-01T00:00:00Z", final: { url: "/f" } })), "/api/v1/video-studio/workspaces/ws1/work-posters/editing/e9");
   assert.equal(posterPath(ws, talkCard({ id: "g7", kind: "lipsync", status: "running", created_at: "2026-11-28T00:00:00Z" })), null);
 });
+
+test("works of one batch keep their batch order, so → goes from 第 1 条 to 第 2 条", () => {
+  const at = "2026-11-28T09:40:00Z";
+  const cards = mergeWorkCards([item({ id: "zz-first", position: 0, created_at: at }), item({ id: "aa-second", position: 1, created_at: at })], [], []);
+  assert.deepEqual(cards.map(card => card.itemId), ["zz-first", "aa-second"]);
+  assert.equal(neighbour(cards, "item:zz-first", 1).itemId, "aa-second");
+});

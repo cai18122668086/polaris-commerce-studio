@@ -298,3 +298,24 @@ def test_voices_list_stays_small_even_with_every_preview_cached(video_gen):
     assert len(response.content) <= 60_000, len(response.content)
     options = client.get(root + "/voice-options").json()
     assert options["emotions"][0] == "自然" and options["languages"]["auto"]
+
+
+def test_overlong_upstream_voice_name_is_cut_to_the_snapshot_column(video_gen):
+    """voice_name 是 String(120)：上游音色名超长时截断，PostgreSQL 上不报错。"""
+
+    client, _, provider, root, _, _ = video_gen
+    long_name = "超长的上游声音名称" * 30
+    provider.voices = lambda: [{"id": 7, "name": long_name}]
+    created = client.post(
+        root + "/personas",
+        json={
+            "request_id": str(uuid4()),
+            "name": "长名字",
+            "avatar_id": "qy-model-11",
+            "voice_id": "qy-voice-7",
+        },
+    )
+    assert created.status_code == 200, created.text
+    with client.app.state.session_factory() as session:
+        row = session.get(VideoPersonaRecord, created.json()["id"])
+        assert len(row.voice_name) == 120 and long_name.startswith(row.voice_name)

@@ -10705,6 +10705,11 @@ export interface components {
             can_retry: boolean;
             /** Item Id */
             item_id: string;
+            /**
+             * Long Wait
+             * @default false
+             */
+            long_wait: boolean;
             /** Queue Position */
             queue_position?: number | null;
             /** Stage */

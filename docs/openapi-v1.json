@@ -15462,6 +15462,11 @@
             "title": "Item Id",
             "type": "string"
           },
+          "long_wait": {
+            "default": false,
+            "title": "Long Wait",
+            "type": "boolean"
+          },
           "queue_position": {
             "anyOf": [
               {

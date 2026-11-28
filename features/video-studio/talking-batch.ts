@@ -217,18 +217,19 @@ export type WorkItemView = {
   error: string | null; publish_title: string; script_text: string; avatar_id: string | null; voice_id: string | null;
   persona_id: string | null; generation_task_id: string | null; drive_mode: string; stage: string; version: number;
 };
-export type TalkingView = { item_id: string; queue_position: number | null; stage: string | null; video_url: string | null; can_retry: boolean; awaiting_check?: boolean };
+export type TalkingView = { item_id: string; queue_position: number | null; stage: string | null; video_url: string | null; can_retry: boolean; awaiting_check?: boolean; long_wait?: boolean };
 export type TalkingBatch = { batch: { id: string; created_at: string; item_ids: string[]; items: WorkItemView[]; status_counts: Record<string, number> }; talking: TalkingView[]; parallel_limit: number; notice?: string | null };
 
-export type ResultBox = { id: string; title: string; state: "queued" | "running" | "done" | "failed" | "checking"; label: string; videoUrl: string | null; canRetry: boolean; canCheck: boolean; error: string | null; position: number };
+export type ResultBox = { id: string; title: string; state: "queued" | "running" | "done" | "failed" | "checking"; label: string; videoUrl: string | null; canRetry: boolean; canCheck: boolean; error: string | null; note: string | null; position: number };
 
 export function resultBoxes(view: TalkingBatch, stageLabel: (stage: string) => string): ResultBox[] {
   const talking = new Map(view.talking.map(item => [item.item_id, item]));
   return view.batch.items.map(item => {
     const extra = talking.get(item.id);
     const title = item.publish_title || (item.script_text.trim().split(/[。！？!?\n]/)[0] || "口播").slice(0, 18);
-    const base = { id: item.id, title, videoUrl: extra?.video_url ?? null, canRetry: !!extra?.can_retry, canCheck: !!extra?.awaiting_check, error: item.error, position: item.position };
-    if (extra?.awaiting_check) return { ...base, state: "checking", label: "结果待确认" };
+    const base = { id: item.id, title, videoUrl: extra?.video_url ?? null, canRetry: !!extra?.can_retry, canCheck: !!extra?.awaiting_check || !!extra?.long_wait, error: item.error, note: null as string | null, position: item.position };
+    if (extra?.awaiting_check) return { ...base, state: "checking", label: "结果待确认", note: "不会重新生成，也不会重复扣积分" };
+    if (extra?.long_wait && item.status !== "succeeded" && item.status !== "failed") return { ...base, state: "checking", label: "供应商排队较久", note: "系统会自动继续查询，不会重复扣费" };
     if (item.status === "succeeded") return { ...base, state: "done", label: "已完成" };
     if (item.status === "failed" || item.status === "canceled") return { ...base, state: "failed", label: "生成失败" };
     if (item.status === "running" || (item.status === "queued" && item.generation_task_id)) return { ...base, state: "running", label: extra?.stage ? stageLabel(extra.stage) : "正在生成" };

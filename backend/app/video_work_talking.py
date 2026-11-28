@@ -392,6 +392,9 @@ class TalkingItemView(StrictVideoModel):
     # The paid submission's outcome is unknown: shown as 结果待确认 with a
     # 查询结果 button; never re-submitted automatically.
     awaiting_check: bool = False
+    # The provider is slow (awaiting_resume): the sweep keeps querying it on a
+    # backoff; 查询结果 asks now. Never re-submitted.
+    long_wait: bool = False
 
 
 class TalkingBatchResponse(StrictVideoModel):
@@ -416,6 +419,7 @@ def talking_view(session: Session, batch: VideoWorkBatchRecord) -> TalkingBatchR
             if job is not None:
                 view.stage = job.stage
                 view.awaiting_check = job.status == "unknown"
+                view.long_wait = job.status == "awaiting_resume"
                 if job.status == "completed":
                     view.video_url = base + job.id + "/video"
         views.append(view)
@@ -821,7 +825,7 @@ def check_talking(
         else None
     )
     notice = None
-    if job is not None and job.status in {"unknown", "running"}:
+    if job is not None and job.status in {"unknown", "running", "awaiting_resume"}:
         settings = request.app.state.settings
         session.commit()
         taken = _take_over(

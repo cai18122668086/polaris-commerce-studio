@@ -643,6 +643,10 @@ def test_long_wait_task_is_queried_again_when_its_backoff_is_due(studio, monkeyp
             seconds=1
         )
         session.commit()
-    assert talking.sweep_once(factory, settings, provider) == [job_id]
-    assert [r[0] for r in runs] == [job_id] and "lease" in runs[0][1]
+    view = client.get(root + f"/work-batches/{batch['id']}/talking").json()
+    assert view["talking"][0]["long_wait"] is True
+    assert view["batch"]["items"][0]["status"] == "running"
+    # 查询结果 asks the provider now (query only), without waiting for retry_at.
+    checked = client.post(root + f"/work-items/{batch['item_ids'][0]}/talking-check")
+    assert checked.status_code == 200 and [r[0] for r in runs] == [job_id]
     assert submits(provider) == []

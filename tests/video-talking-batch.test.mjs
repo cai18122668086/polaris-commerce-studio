@@ -135,3 +135,14 @@ test("counts match the script library: API numbers for library scripts, scriptSt
   assert.equal(t.scriptChars(typed) > 0, true);
   assert.equal(t.summary(t.addScripts(t.emptyDraft(), [fromLibrary]), 50).seconds, 87);
 });
+
+test("slow provider and unknown outcome both offer 查询结果 with a no-double-charge note", () => {
+  const item = (id, status) => ({ id, position: 0, status, error: null, publish_title: "稿", script_text: "x", avatar_id: "a", voice_id: "v", persona_id: null, generation_task_id: "g", drive_mode: "text", stage: "talking", version: 3 });
+  const view = { batch: { id: "b", created_at: "", item_ids: ["i1", "i2"], items: [item("i1", "running"), item("i2", "running")], status_counts: {} }, parallel_limit: 4, talking: [
+    { item_id: "i1", queue_position: null, stage: "lipsync_generating", video_url: null, can_retry: false, long_wait: true },
+    { item_id: "i2", queue_position: null, stage: "lipsync_submitting", video_url: null, can_retry: false, awaiting_check: true },
+  ] };
+  const [slow, unknown] = t.resultBoxes(view, () => "正在处理");
+  assert.deepEqual([slow.state, slow.label, slow.note, slow.canCheck], ["checking", "供应商排队较久", "系统会自动继续查询，不会重复扣费", true]);
+  assert.deepEqual([unknown.state, unknown.label, unknown.canCheck], ["checking", "结果待确认", true]);
+});

@@ -364,6 +364,7 @@ export function TalkingStudio(props: Props) {
           <b><span>{index + 1}</span>{box.title}</b>
           {who && <small className={styles.who}>{who}</small>}
           {box.state === "failed" && box.error && <small className={styles.failText}>{box.error}</small>}
+          {box.note && <small className={styles.noteText}>{box.note}</small>}
           <div>
             {box.state === "done" && box.videoUrl && <a className={styles.quietButton} href={mediaUrl(box.videoUrl)} download><Download size={14} />下载</a>}
             {box.canCheck && <button type="button" className={styles.quietButton} disabled={retrying.includes(box.id)} onClick={() => void check(box.id)}><Search size={14} />{retrying.includes(box.id) ? "正在查询" : "查询结果"}</button>}

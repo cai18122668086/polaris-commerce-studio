@@ -134,6 +134,7 @@
 .page .playOverlay { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; border: 0; background: linear-gradient(to top, rgb(0 0 0 / 28%), transparent 40%); padding: 0; }
 .playOverlay span { width: 48px; height: 48px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: rgb(255 255 255 / 92%); color: #1a1a19; padding-left: 3px; transition: transform .18s; }
 .page .playOverlay:hover span { transform: scale(1.06); }
+.noteText { display: block; color: var(--t-muted); font-size: 12px; line-height: 1.55; margin-top: 4px; }
 .failText { display: block; color: var(--t-warn); font-size: 12px; line-height: 1.55; margin-top: 4px; }
 .resultMeta > div { display: flex; gap: 4px; margin: 6px 0 0 -8px; min-height: 30px; }
 

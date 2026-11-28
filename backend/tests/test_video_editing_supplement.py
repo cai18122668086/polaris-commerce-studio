@@ -1196,3 +1196,41 @@ def test_mg_only_on_presenter_templates(tmp_path):
         tmp_path / "final.mp4",
     )
     assert receipt["status"] == "template_not_supported"
+
+
+def test_overlay_chain_enables_by_time_not_frame_counter(tmp_path, monkeypatch):
+    from fractions import Fraction
+
+    from app.mg import overlay
+
+    seen = {}
+
+    def fake_run(cmd, **kwargs):
+        seen["graph"] = cmd[cmd.index("-filter_complex") + 1]
+
+    monkeypatch.setattr(overlay.subprocess, "run", fake_run)
+    cues = [
+        {
+            "frames_dir": "a",
+            "first_frame": 0,
+            "last_frame": 32,
+            "x": 0,
+            "y": 0,
+            "scale": 1.0,
+        },
+        {
+            "frames_dir": "b",
+            "first_frame": 251,
+            "last_frame": 290,
+            "x": 162,
+            "y": 1220,
+            "scale": 0.9,
+        },
+    ]
+    overlay.composite(
+        "ffmpeg", tmp_path / "in.mp4", cues, Fraction(25, 1), tmp_path / "o.mp4"
+    )
+    graph = seen["graph"]
+    assert "between(n," not in graph
+    assert "between(t,0.000000,1.340000)" in graph
+    assert "between(t,10.020000,11.620000)" in graph

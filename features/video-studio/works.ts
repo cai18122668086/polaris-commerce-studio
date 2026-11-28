@@ -30,6 +30,8 @@ export type ProgressTone = "running" | "waiting" | "failed";
 export type WorkCard = {
   key: string;
   source: "item" | "edit" | "talk";
+  /** Order inside a batch (C2 position); items of one batch share created_at. */
+  position: number;
   itemId: string | null;
   batchId: string | null;
   editingTaskId: string | null;
@@ -112,7 +114,7 @@ export function itemCard(item: WorkItemLike): WorkCard {
   const title = (item.publish_title ?? "").trim();
   const fallback = firstSentence(item.script_text);
   return {
-    key: `item:${item.id}`, source: "item", itemId: item.id, batchId: item.batch_id,
+    key: `item:${item.id}`, source: "item", position: item.position ?? 0, itemId: item.id, batchId: item.batch_id,
     editingTaskId: item.editing_task_id ?? null, generationTaskId: item.generation_task_id ?? null, projectId: null,
     title: title || fallback || "未命名作品", titleIsFallback: !title,
     body: item.publish_body ?? "", script: item.script_text ?? "",
@@ -127,7 +129,7 @@ export function itemCard(item: WorkItemLike): WorkCard {
 export function editCard(work: EditingWorkLike): WorkCard {
   const title = work.project_title && work.project_title !== "未命名项目" ? work.project_title : "";
   return {
-    key: `edit:${work.task_id}`, source: "edit", itemId: null, batchId: null, editingTaskId: work.task_id,
+    key: `edit:${work.task_id}`, source: "edit", position: 0, itemId: null, batchId: null, editingTaskId: work.task_id,
     generationTaskId: null, projectId: work.project_id,
     title: title || "未命名作品", titleIsFallback: true, body: "", script: "",
     coverId: null, videoUrl: work.final.url, createdAt: work.created_at, progress: null, finished: true, hasVideo: true,
@@ -143,7 +145,7 @@ export function talkCard(job: TalkJobLike): WorkCard | null {
   const name = (job.snapshot?.draft?.name ?? "").trim();
   const title = firstSentence(script) || (name && name !== "未命名视频" ? name : "") || "未命名作品";
   return {
-    key: `talk:${job.id}`, source: "talk", itemId: null, batchId: null, editingTaskId: null, generationTaskId: job.id, projectId: null,
+    key: `talk:${job.id}`, source: "talk", position: 0, itemId: null, batchId: null, editingTaskId: null, generationTaskId: job.id, projectId: null,
     title, titleIsFallback: true, body: "", script,
     coverId: null, videoUrl: job.status === "completed" ? job.video_url ?? null : null, createdAt: job.created_at,
     progress: job.status === "completed" ? null : { label: "口播生成中", tone: "running" }, finished: job.status === "completed",
@@ -161,7 +163,7 @@ export function mergeWorkCards(items: WorkItemLike[], edits: EditingWorkLike[], 
     ...edits.filter(work => !editIds.has(work.task_id)).map(editCard),
     ...jobs.filter(job => !talkIds.has(job.id)).map(talkCard).filter((card): card is WorkCard => card !== null),
   ];
-  return cards.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.key.localeCompare(b.key));
+  return cards.sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt) || a.position - b.position || a.key.localeCompare(b.key));
 }
 
 export type WorkRange = "all" | "7d" | "30d";

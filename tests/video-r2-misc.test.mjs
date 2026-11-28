@@ -49,3 +49,18 @@ test("声音行显示接口返回的用途说明（系统兜底文字不显示�
   const picker = readFileSync(new URL("../components/video-studio/voice-picker.tsx", import.meta.url), "utf8");
   assert.match(picker, /voice\.description && voice\.description !== "系统声音" && <em className=\{styles\.voiceUsage\}>/);
 });
+
+test("B8：文案、补充素材、形象三处价格为空统一「灰度测试期间不扣积分」，有价才说失败不扣", async () => {
+  const { build } = await import("esbuild");
+  const compiled = await build({ entryPoints: ["features/video-studio/supplement-materials.ts"], bundle: true, write: false, format: "esm", platform: "node", logLevel: "silent" });
+  const m = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].text).toString("base64")}`);
+  assert.equal(m.aiCost(3, null), "3 张，灰度测试期间不扣积分");
+  assert.equal(m.aiCost(3, 7), "3 张 × 7 积分 = 21 积分");
+  const files = ["components/video-studio/auto-writing.tsx", "components/video-studio/avatar-cloning.tsx", "components/video-studio/avatar-create-drawer.tsx", "components/video-studio/generation-confirmation.tsx", "components/video-studio/generation-preview.tsx", "components/video-studio/supplement-materials-panel.tsx", "features/video-studio/supplement-materials.ts"];
+  for (const file of files) assert.doesNotMatch(readFileSync(file, "utf8"), /按实际(用量|服务|张数)计费|（计费）|按实际服务计费/, file);
+  const panel = readFileSync("components/video-studio/supplement-materials-panel.tsx", "utf8");
+  assert.match(panel, /whenPriced\(credits, "，按实际生成成功的张数扣，失败不扣"\)/);
+  assert.match(panel, /creditPhrase\(credits, \{ per: "张", failureFree: true \}\)/);
+  const confirm = readFileSync("components/video-studio/generation-confirmation.tsx", "utf8");
+  assert.match(confirm, /whenPriced\(cost\?\.credits, "，可能产生登记费用"\)/);
+});

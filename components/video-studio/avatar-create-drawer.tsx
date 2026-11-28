@@ -5,7 +5,7 @@ import { Check, LoaderCircle, Sparkles, Upload } from "lucide-react";
 import { ApiError } from "@/lib/api/api-error";
 import { mediaUrl } from "@/lib/api/base-url";
 import type { UploadProgress } from "@/lib/api/upload";
-import { billableLabel, useVideoCredits } from "@/features/video-studio/credits";
+import { billableLabel, creditPhrase, useVideoCredits } from "@/features/video-studio/credits";
 import type { GenerationJob, useVideoLibrary } from "@/features/video-studio/library";
 import { AVATAR_PHASE_COPY, avatarPhase, type AvatarPhase } from "@/features/video-studio/persona-rules";
 import { AvatarCheckButton } from "./avatar-check-button";
@@ -143,7 +143,7 @@ export function AvatarCreateDrawer({ open, onClose, workspaceId, userId, library
           <div className={styles.presets} aria-label="示例描述">{POLISH_PRESETS.map(item => <button key={item.label} type="button" aria-pressed={polishText === item.description} disabled={attempted || polish.busy || polish.running} onClick={() => { setPolishText(item.description); setPolishTouched(true); }}>{item.label}</button>)}</div>
           {polishTouched && polishError && <p className={styles.error} role="alert">{polishError}</p>}
           <div className={styles.polishAction}>
-            <span className={styles.footerNote}>{polishTotal === null ? polishCost.text : `每张 ${polishCost.credits} 积分，按实际生成张数扣，失败不扣`}</span>
+            <span className={styles.footerNote}>{polishTotal === null ? polishCost.text : `${creditPhrase(polishCost.credits, { per: "张", failureFree: true })}（按实际生成张数扣）`}</span>
             <button type="button" className={base.outlineButton} disabled={!file || !consent || !!polishError || polish.busy || polish.running || attempted} onClick={() => { setPolishTouched(true); setChosen("original"); void polish.generate(file!, polishText); }}>{polish.busy || polish.running ? <><LoaderCircle size={14} className={styles.spin} />正在润色…</> : billableLabel(polish.candidates.length ? "重新生成 2 张" : "生成 2 张候选", polishTotal)}</button>
           </div>
           {!consent && file && <p className={styles.hint}>先勾选上面的授权确认，再生成候选。</p>}

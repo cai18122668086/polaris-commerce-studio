@@ -7,6 +7,7 @@ import { AUTO_STAGES, useAutoWriting, type AutoDraft, type AutoRun, type AutoSta
 import { PLATFORM_LABEL, type AnalysisDoc, type DraftDoc, type Platform, type ReferenceDoc } from "@/features/video-studio/use-viral-writing";
 import { editChanged, editOf, fullText, toggle, type LibraryEdit, type LibraryEntry, type LibraryPlatform } from "@/features/video-studio/script-library-format";
 import { scriptLibraryApi } from "@/features/video-studio/use-script-library";
+import { FREE_TRIAL_TEXT, isPriced, useVideoCredits } from "@/features/video-studio/credits";
 import { ScriptParts } from "./script-library-parts";
 import type { ToastTone } from "./studio-toast";
 import lib from "./script-library.module.css";
@@ -21,7 +22,7 @@ const LIMITS = [["price", "不写价格"], ["net_quantity", "不写净含量"], 
 
 /* ------------------------------------------------------------------ start */
 
-function StartForm({ initial, busy, onStart, onCancel }: { initial: Partial<AutoStart>; busy: boolean; onStart: (input: AutoStart) => void; onCancel?: () => void }) {
+function StartForm({ initial, busy, onStart, onCancel, writingPriced = false }: { initial: Partial<AutoStart>; busy: boolean; onStart: (input: AutoStart) => void; onCancel?: () => void; writingPriced?: boolean }) {
   const [platform, setPlatform] = useState<Platform>(initial.platform || "douyin");
   const [query, setQuery] = useState(initial.query || "");
   const [facts, setFacts] = useState(initial.facts_text || "");
@@ -61,7 +62,7 @@ function StartForm({ initial, busy, onStart, onCancel }: { initial: Partial<Auto
     </div>
     <div className={css.actions}>
       {onCancel && <button type="button" className={studio.outlineButton} onClick={onCancel}>取消</button>}
-      <small>大约 3–5 分钟，期间可以离开这个页面。每版都有标题、发布正文和口播稿，写好自动存进文案库。会调用搜索和写稿模型（计费）。</small>
+      <small>大约 3–5 分钟，期间可以离开这个页面。每版都有标题、发布正文和口播稿，写好自动存进文案库。会调用搜索和写稿模型{writingPriced ? "，按步骤扣积分" : `（${FREE_TRIAL_TEXT}）`}。</small>
       <button type="submit" className={studio.primaryButton} disabled={busy || !query.trim() || facts.trim().length < 4}>{busy ? "提交中…" : "让 AI 写 3 版文案"}<ArrowRight size={15} /></button>
     </div>
   </form>;
@@ -233,6 +234,7 @@ export function AutoWriting({ workspaceId, projectId, session, productFacts, cop
   onUseScripts: (ids: string[]) => void; onManual?: () => void;
 }) {
   const flow = useAutoWriting({ workspaceId, projectId, session });
+  const credits = useVideoCredits(workspaceId);
   const [form, setForm] = useState(false);
   const run = flow.run;
   const inputs = run?.result.request;
@@ -241,7 +243,7 @@ export function AutoWriting({ workspaceId, projectId, session, productFacts, cop
     .map(p => ({ title: candidates.get(p.platform_id)?.title || p.platform_id, reason: p.reason }));
   const showForm = form || !run;
   return <div className={css.page}>
-    {showForm ? <StartForm initial={inputs || { facts_text: productFacts }} busy={flow.busy === "start"}
+    {showForm ? <StartForm initial={inputs || { facts_text: productFacts }} busy={flow.busy === "start"} writingPriced={isPriced(credits.note(["benchmark_search", "writing_generate"]).credits)}
       onCancel={run ? () => setForm(false) : undefined}
       onStart={input => void flow.start(input).then(() => setForm(false))} />
       : flow.running ? <Progress run={run} picks={picks} />

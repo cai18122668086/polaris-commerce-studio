@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent } from "react";
 import { Check, FileVideo, ImageIcon, RefreshCw, Trash2, Upload } from "lucide-react";
 import { mediaUrl } from "@/lib/api/base-url";
+import { creditPhrase, whenPriced } from "@/features/video-studio/credit-notes";
 import {
   aiCost,
   licenceLine,
@@ -120,7 +121,7 @@ export function SupplementMaterialsPanel({ workspaceId, value, onChange, workIte
               const info = state(key);
               const checked = enabled(key);
               const price = key === "ai_image"
-                ? (info?.credits_per_image ? `${info.credits_per_image} 积分/张，每条最多 ${info.max_images ?? 6} 张` : "按实际张数计费")
+                ? `${creditPhrase(info?.credits_per_image, { per: "张" })}，每条最多 ${info?.max_images ?? 6} 张`
                 : "免费";
               return (
                 <label key={key} className={styles.card} data-checked={checked} data-disabled={Boolean(blocked)}>
@@ -550,7 +551,7 @@ function AiSection({ workspaceId, item, value, update, report }: SectionProps) {
     <section className={styles.section} aria-label="AI 生成素材">
       <div className={styles.sectionHead}>
         <h4>AI 生成素材</h4>
-        <span className={styles.note}>{credits ? `${credits} 积分/张 · 失败不扣` : "按实际张数计费"}</span>
+        <span className={styles.note}>{creditPhrase(credits, { per: "张", failureFree: true })}</span>
       </div>
       {error && <p className={styles.error}>{error}</p>}
       {!item.script_text.trim() && <p className={styles.empty}>这条视频没有口播稿，暂时无法按句配图。</p>}
@@ -567,7 +568,7 @@ function AiSection({ workspaceId, item, value, update, report }: SectionProps) {
             ))}
           </ol>
           <div className={styles.confirmBar}>
-            <span>将生成 {aiCost(plan.length, credits)}，按实际生成成功的张数扣，失败不扣。</span>
+            <span>将生成 {aiCost(plan.length, credits)}{whenPriced(credits, "，按实际生成成功的张数扣，失败不扣")}。</span>
             <button type="button" className={styles.primary} disabled={confirming} onClick={() => void generate()}>
               {confirming ? "正在提交…" : `确认生成${credits ? `（${plan.length * credits} 积分）` : ""}`}
             </button>

@@ -16,12 +16,14 @@ function load(file, resolver) {
   return mod.exports;
 }
 const rules = load("../features/video-studio/persona-rules.ts", require);
+const creditNotes = load("../features/video-studio/credit-notes.ts", require);
 const creditCalls = [];
 const stubs = {
   "@/features/video-studio/persona-rules": rules,
   "@/features/video-studio/credits": {
     useVideoCredits: () => ({ note: actions => { creditCalls.push(actions); return { text: "预计 30 积分", credits: 30, insufficient: false }; } }),
     billableLabel: (action, credits) => (typeof credits === "number" ? `${action} · ${credits} 积分` : `${action}（计费）`),
+    creditPhrase: (...args) => creditNotes.creditPhrase(...args),
   },
   "@/lib/api/base-url": { mediaUrl: url => url },
   "@/lib/api/api-error": { ApiError: class ApiError extends Error {} },

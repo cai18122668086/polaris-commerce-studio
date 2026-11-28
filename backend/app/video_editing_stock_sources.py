@@ -674,10 +674,14 @@ def _stem(word: str) -> str:
 def relevant(row: Candidate, queries: list[str]) -> bool:
     if not row.title:
         return True
-    tags = {_stem(w) for w in _words(row.title)}
+    # Tags are comma-separated phrases: all query words must sit in ONE tag
+    # ("hand" + "ice cream" must not pass as "hand cream").
+    phrases = [
+        {_stem(w) for w in _words(tag)} for tag in re.split(r"[,，;；]", row.title)
+    ]
     for query in queries:
         words = {_stem(w) for w in _words(query)}
-        if words and words <= tags:
+        if words and any(words <= phrase for phrase in phrases):
             return True
     return False
 

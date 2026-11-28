@@ -55,6 +55,15 @@ export function PhonePreview({ workspaceId, cards, current, accountName, onMove,
     return () => window.removeEventListener("keydown", onKey);
   }, [next, previous, onMove, onClose]);
 
+  // React does not write `muted` as an attribute before load, so browsers may
+  // block autoplay; mute and start explicitly whenever the work changes.
+  useEffect(() => {
+    const element = player.current;
+    if (!element) return;
+    element.muted = true;
+    element.play()?.catch(() => setView(view => ({ ...view, paused: true })));
+  }, [current.key, src]);
+
   const toggle = () => {
     const element = player.current;
     if (!element) return;
@@ -82,7 +91,7 @@ export function PhonePreview({ workspaceId, cards, current, accountName, onMove,
           </div>
           <div className={styles.phoneControls}>
             <button type="button" onClick={toggle} aria-label={paused ? "播放" : "暂停"}>{paused ? <Play size={16} /> : <Pause size={16} />}</button>
-            <button type="button" onClick={() => setMuted(value => !value)} aria-label={muted ? "打开声音" : "静音"}>{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
+            <button type="button" onClick={() => { const next = !muted; setMuted(next); if (player.current) player.current.muted = next; }} aria-label={muted ? "打开声音" : "静音"}>{muted ? <VolumeX size={16} /> : <Volume2 size={16} />}</button>
           </div>
         </div>
       </div>

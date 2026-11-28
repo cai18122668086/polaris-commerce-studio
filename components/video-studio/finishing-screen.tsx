@@ -7,12 +7,12 @@ import { ApiError } from "@/lib/api/api-error";
 import { mediaUrl } from "@/lib/api/base-url";
 import { editingHref, worksHref } from "@/features/video-studio/flow-params";
 import { BODY_LIMIT, COVER_TEXT_LIMIT, COVER_TEXT_SUGGESTED, TITLE_LIMITS, countChars, defaultCoverText, type Platform } from "@/features/video-studio/works";
-import { coverImageUrl, useCoverActions, useCoverCandidates, useFinishingItems, useWorkVideo, type CoverCandidate, type WorkItem } from "@/features/video-studio/use-finishing";
+import { coverImageUrl, useCoverActions, useCoverCandidates, useFinishingItems, useScriptPlatforms, useWorkVideo, type CoverCandidate, type WorkItem } from "@/features/video-studio/use-finishing";
 import { GuidedEmpty } from "./page-hero";
 import styles from "./finish-works.module.css";
 
 type Notify = (text: string, tone?: "success" | "error" | "info") => void;
-type Draft = { title: string; body: string; coverText: string; highlight: string; coverId: string | null };
+type Draft = { title: string; body: string; coverText: string; highlight: string; coverId: string | null; platform?: Platform };
 
 const PLATFORM_LABEL: Record<Platform, string> = { douyin: "抖音", xiaohongshu: "小红书" };
 const uuid = () => crypto.randomUUID();
@@ -40,6 +40,9 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
   const [drafts, setDrafts] = useState<Record<string, Partial<Draft>>>({});
   const [bulk, setBulk] = useState(false);
   const list = useMemo(() => (items.data ?? []) as WorkItem[], [items.data]);
+  const platforms = useScriptPlatforms(workspaceId, list.map(entry => entry.script_document_id ?? ""));
+  // Each work keeps the platform of its script (C1); the page switch is only the default.
+  const platformOf = (entry: WorkItem): Platform => drafts[entry.id]?.platform ?? platforms.data?.[entry.script_document_id ?? ""] ?? platform;
   const ready = list.filter(entry => entry.stage === "finishing" || entry.stage === "done");
   const saved = list.filter(entry => entry.stage === "done").length;
 
@@ -56,7 +59,7 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
     const text = draft.coverText.trim();
     if (!text) { notify("先填写封面大字", "error"); return false; }
     try {
-      await actions.generate.mutateAsync({ request_id: uuid(), work_item_id: entry.id, cover_text: text, highlight: draft.highlight || null, platform, round });
+      await actions.generate.mutateAsync({ request_id: uuid(), work_item_id: entry.id, cover_text: text, highlight: draft.highlight || null, platform: platformOf(entry), round });
       return true;
     } catch (error) {
       notify(errorText(error, "封面没有生成成功，请稍后再试。"), "error");
@@ -92,7 +95,8 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
       </dl>
     </header>
     <div className={styles.toolbar}>
-      <div className={styles.segment} role="radiogroup" aria-label="发布平台">
+      <span className={styles.toolbarLabel}>默认平台</span>
+      <div className={styles.segment} role="radiogroup" aria-label="默认发布平台">
         {(Object.keys(PLATFORM_LABEL) as Platform[]).map(key => <button key={key} type="button" role="radio" aria-checked={platform === key} onClick={() => setPlatform(key)}>{PLATFORM_LABEL[key]}</button>)}
       </div>
       <span className={styles.toolbarNote}>每条出 2 张：1 张用视频画面（免费），1 张 AI 重绘{coverCredits != null ? `（${coverCredits} 积分，失败不扣）` : "（按实际张数计费，失败不扣）"}</span>
@@ -101,7 +105,7 @@ export function FinishingScreen({ workspaceId, batch, item, coverCredits, notify
       </button>
     </div>
     <ol className={styles.rows}>
-      {list.map((entry, index) => <FinishRow key={entry.id} index={index} workspaceId={workspaceId} entry={entry} draft={draftOf(entry)} platform={platform}
+      {list.map((entry, index) => <FinishRow key={entry.id} index={index} workspaceId={workspaceId} entry={entry} draft={draftOf(entry)} platform={platformOf(entry)}
         onChange={patch => update(entry.id, patch)} onGenerate={round => void generateFor(entry, round)} generating={actions.generate.isPending && actions.generate.variables?.work_item_id === entry.id}
         actions={actions} notify={notify} />)}
     </ol>
@@ -187,8 +191,12 @@ function FinishRow({ index, workspaceId, entry, draft, platform, onChange, onGen
       {round.map(cover => cover.message && <p key={cover.id} className={styles.note}>{cover.message}</p>)}
     </div>
     <div className={styles.rowText}>
+      <div className={styles.rowPlatform} role="radiogroup" aria-label="这条的发布平台">
+        <span>发布到</span>
+        {(Object.keys(PLATFORM_LABEL) as Platform[]).map(key => <button key={key} type="button" role="radio" aria-checked={platform === key} onClick={() => onChange({ platform: key })}>{PLATFORM_LABEL[key]}</button>)}
+      </div>
       <label className={styles.field}>
-        <span>发布标题 <small className={titleCount > limit ? styles.over : ""}>{titleCount}/{limit}（{PLATFORM_LABEL[platform]}）</small></span>
+        <span>发布标题 <small className={titleCount > limit ? styles.over : ""}>{titleCount}/{limit}</small></span>
         <input value={draft.title} maxLength={60} onChange={event => onChange({ title: event.target.value })} />
       </label>
       {titleCount > limit && <p className={styles.over}>超过{PLATFORM_LABEL[platform]}标题上限，发布时会被截断。</p>}

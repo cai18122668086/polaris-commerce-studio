@@ -5820,6 +5820,11 @@ export interface components {
         };
         /** AutoWritingRequest */
         AutoWritingRequest: {
+            /**
+             * Count
+             * @default 3
+             */
+            count: number;
             /** Expected Revision */
             expected_revision: number;
             /** Facts Text */
@@ -5832,6 +5837,8 @@ export interface components {
              * @enum {string}
              */
             platform: "douyin" | "xiaohongshu";
+            /** Platforms */
+            platforms?: ("douyin" | "xiaohongshu")[];
             /**
              * Project Id
              * Format: uuid
@@ -9473,6 +9480,14 @@ export interface components {
             request_id: string;
             /** Script */
             script: string;
+            /**
+             * Source
+             * @default manual
+             * @enum {string}
+             */
+            source: "manual" | "auto_writing";
+            /** Writing Document Id */
+            writing_document_id?: string | null;
         };
         /** LibraryEntry */
         LibraryEntry: {

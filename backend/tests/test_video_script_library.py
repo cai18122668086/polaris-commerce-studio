@@ -17,7 +17,7 @@ from app.video_writing_contracts import (
     WritingReference,
     WritingStructureDraft,
 )
-from app.video_writing_models import VideoScriptLibraryEntry
+from app.video_writing_models import VideoScriptLibraryEntry, VideoWritingDocument
 from app.video_writing_provider import validate_draft
 from tests.test_video_projects import base, payload
 
@@ -673,3 +673,62 @@ def test_mirroring_failure_does_not_take_the_library_down(video, monkeypatch):
     assert [i["script"] for i in page.json()["items"]] == ["已经在新库里的文案。"]
     monkeypatch.undo()
     assert client.get(f"{url}/script-library").json()["total"] == 2  # mirrored later
+
+
+def test_an_old_version_is_stored_once_by_its_document(flow):
+    """「存入文案库」on a version written before auto-ingest: one entry per
+    document, whatever request id, click count or reload; removed then stored
+    again comes back; someone else's or a missing document is refused."""
+    doc = save(flow, flow.write("xiaohongshu"))
+    with flow.client.app.state.session_factory() as session:  # 改版前：没入库
+        session.delete(session.get(VideoScriptLibraryEntry, doc["library_entry_id"]))
+        session.commit()
+    assert listed(flow, documents=doc["id"])["items"] == []
+    body = {
+        "script": "旧版本的口播稿。",
+        "platform": "xiaohongshu",
+        "writing_document_id": doc["id"],
+        "source": "auto_writing",
+    }
+    url = f"{flow.url}/script-library"
+    first = flow.client.post(url, json={**body, "request_id": str(uuid4())})
+    assert first.status_code == 200, first.text
+    again = flow.client.post(url, json={**body, "request_id": str(uuid4())}).json()
+    assert again["id"] == first.json()["id"]
+    [item] = listed(flow, documents=doc["id"])["items"]
+    assert item["writing_document_id"] == doc["id"]
+    assert item["source"] == "auto_writing" and item["platform"] == "xiaohongshu"
+    assert item["project_id"] == flow.pid and item["benchmark_refs"]
+    assert listed(flow)["total"] == 1
+
+    flow.client.delete(f"{url}/{item['id']}").raise_for_status()
+    back = flow.client.post(url, json={**body, "request_id": str(uuid4())}).json()
+    assert back["id"] == item["id"] and listed(flow)["total"] == 1
+
+    missing = flow.client.post(
+        url,
+        json={**body, "request_id": str(uuid4()), "writing_document_id": str(uuid4())},
+    )
+    assert missing.status_code == 404
+    # A document that is not a draft (the reference) cannot be stored.
+    with flow.client.app.state.session_factory() as session:
+        ref_id = session.get(VideoWritingDocument, doc["id"]).reference_document_id
+    refused = flow.client.post(
+        url, json={**body, "request_id": str(uuid4()), "writing_document_id": ref_id}
+    )
+    assert refused.status_code == 404
+
+
+def test_an_auto_saved_version_is_not_stored_twice(flow):
+    doc = save(flow, flow.write("douyin"))
+    stored = flow.client.post(
+        f"{flow.url}/script-library",
+        json={
+            "request_id": str(uuid4()),
+            "script": "别的字",
+            "platform": "douyin",
+            "writing_document_id": doc["id"],
+        },
+    ).json()
+    assert stored["id"] == doc["library_entry_id"]
+    assert listed(flow)["total"] == 1

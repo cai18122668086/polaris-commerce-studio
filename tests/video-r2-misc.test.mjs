@@ -82,7 +82,7 @@ test("文案页旧版本：只有口播稿时显示「生成于旧版本」+ 补
   assert.match(normal, /夏天必备冰丝凉席/);
   assert.doesNotMatch(normal, /旧版本/);
   const writing = readFileSync(new URL("../components/video-studio/auto-writing.tsx", import.meta.url), "utf8");
-  assert.match(writing, /library\.fill\(row\.id, platform \|\| "douyin", crypto\.randomUUID\(\)\)/);
+  assert.match(writing, /library\.fill\(row\.id, platformOf\(d\) \|\| "douyin", crypto\.randomUUID\(\)\)/);
   assert.match(writing, /legacy=\{legacy \? <>/);
 });
 

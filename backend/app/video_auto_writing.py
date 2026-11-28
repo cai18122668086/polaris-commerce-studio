@@ -18,11 +18,11 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from types import SimpleNamespace
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Request
-from pydantic import Field, StringConstraints
+from pydantic import Field, StringConstraints, model_validator
 from sqlalchemy import select, update
 
 from .auth import SessionDependency, WorkspaceContext, require_workspace_write
@@ -57,11 +57,32 @@ _RUNNING: set[str] = set()
 _LOCK = threading.Lock()
 
 
+PlatformName = Literal["douyin", "xiaohongshu"]
+PLATFORM_LABEL = {"douyin": "抖音", "xiaohongshu": "小红书"}
+# Versions written when a request does not say how many (the fixed number
+# before the count could be chosen; older pages never send ``count``).
+DEFAULT_COUNT = 3
+MAX_COUNT = 10
+
+
+def allocation(count: int, platforms: list[str]) -> dict[str, int]:
+    """N versions split evenly over the platforms, in the order they were
+    ticked; an odd one goes to the first. ``{"douyin": 2, "xiaohongshu": 1}``.
+    """
+    if not platforms:
+        return {}
+    base, extra = divmod(count, len(platforms))
+    return {p: base + (1 if i < extra else 0) for i, p in enumerate(platforms)}
+
+
 class AutoWritingRequest(StrictVideoModel):
     request_id: UUID
     project_id: UUID
     expected_revision: int = Field(ge=1)
-    platform: Literal["douyin", "xiaohongshu"] = "douyin"
+    # 旧字段：只写一个平台。新页面同时发 ``platforms``（按勾选顺序，1–2 个）。
+    platform: PlatformName = "douyin"
+    platforms: list[PlatformName] = Field(default_factory=list, max_length=2)
+    count: int = Field(default=DEFAULT_COUNT, ge=1, le=MAX_COUNT)
     query: Annotated[
         str, StringConstraints(strip_whitespace=True, min_length=1, max_length=4000)
     ]
@@ -72,6 +93,15 @@ class AutoWritingRequest(StrictVideoModel):
     restricted_claims: list[Literal["price", "net_quantity", "health_effect"]] = Field(
         default_factory=list
     )
+
+    @model_validator(mode="after")
+    def one_or_two_platforms(self) -> Self:
+        if "platforms" in self.model_fields_set and not self.platforms:
+            raise ValueError("至少选一个平台")
+        picked = list(dict.fromkeys(self.platforms)) or [self.platform]
+        self.platforms = picked
+        self.platform = picked[0]
+        return self
 
 
 class Stop(Exception):
@@ -94,6 +124,8 @@ class Run:
         self.request = SimpleNamespace(app=app)
         self.factory = app.state.session_factory
         self.service = provider(self.request)  # type: ignore[arg-type]
+        # Two platform lanes save the same checkpoint row from two threads.
+        self.lock = threading.Lock()
 
     # ---- checkpoint -------------------------------------------------------
     def row(self) -> VideoAssistanceRecord:
@@ -104,7 +136,7 @@ class Run:
             return row
 
     def save(self, stage: str | None = None, **values: Any) -> dict[str, Any]:
-        with self.factory() as session:
+        with self.lock, self.factory() as session:
             row = session.get(VideoAssistanceRecord, self.id)
             assert row is not None
             result = {**row.result, **values}
@@ -115,6 +147,34 @@ class Run:
             row.updated_at = utc_now()
             session.commit()
             return result
+
+    def save_lane(
+        self, key: str, stage: str | None = None, **values: Any
+    ) -> dict[str, Any]:
+        """Save one platform's part (``result.lanes[key]``); the run's stage is
+        the stage of the lane furthest behind that is still going."""
+        with self.lock, self.factory() as session:
+            row = session.get(VideoAssistanceRecord, self.id)
+            assert row is not None
+            lanes = dict(row.result.get("lanes") or {})
+            lane = {**(lanes.get(key) or {}), **values}
+            if stage:
+                lane["stage"] = stage
+            lanes[key] = lane
+            result = {**row.result, "lanes": lanes}
+            going = [
+                v.get("stage")
+                for v in lanes.values()
+                if v.get("status") != "failed" and v.get("stage") in LANE_STAGES
+            ]
+            if going:
+                slowest = min(going, key=LANE_STAGES.index)
+                result["stage"], result["stage_label"] = slowest, STAGES[slowest]
+            row.result = result
+            row.stage = result.get("stage", row.stage)
+            row.updated_at = utc_now()
+            session.commit()
+            return lane
 
     def heartbeat(self) -> None:
         with self.factory() as session:
@@ -190,10 +250,74 @@ class Run:
         return json.loads(content)
 
 
+LANE_STAGES = ["search", "pick", "extract", "analyse"]
+
+
+class Lane:
+    """One platform's benchmarks: search → pick → extract → analyse.
+
+    A run with one platform (or pasted links) has a single lane stored at the
+    top of ``result``, exactly the shape it always had. Two platforms searched
+    separately get ``result.lanes.douyin`` / ``result.lanes.xiaohongshu``; the
+    step functions do not know the difference: they get this object as their
+    ``run`` and their saves land in the right place. Request ids are derived
+    from ``id``, so the two lanes never share a search or an analysis.
+    """
+
+    def __init__(self, run: Run, key: str | None, platform: str) -> None:
+        self.run, self.key, self.platform = run, key, platform
+        self.id = run.id if key is None else f"{run.id}:{key}"
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self.run, name)
+
+    def save(self, stage: str | None = None, **values: Any) -> dict[str, Any]:
+        if self.key is None:
+            return self.run.save(stage, **values)
+        return self.run.save_lane(self.key, stage, **values)
+
+    def state(self) -> dict[str, Any]:
+        result = self.run.row().result
+        if self.key is None:
+            return result
+        return {
+            "retry": result.get("retry", 0),
+            **(result.get("lanes") or {}).get(self.key, {}),
+        }
+
+
+def wanted_platforms(inputs: dict[str, Any]) -> list[str]:
+    return list(inputs.get("platforms") or [inputs.get("platform") or "douyin"])
+
+
+def planned(inputs: dict[str, Any]) -> dict[str, int]:
+    """How many versions each platform gets; a platform with 0 is left out."""
+    split = allocation(
+        int(inputs.get("count") or DEFAULT_COUNT), wanted_platforms(inputs)
+    )
+    return {p: n for p, n in split.items() if n > 0}
+
+
+def lanes_of(run: Run, inputs: dict[str, Any]) -> list[Lane]:
+    platforms = list(planned(inputs))
+    if len(platforms) == 1 or links_in(inputs["query"]):
+        return [Lane(run, None, platforms[0])]
+    return [Lane(run, p, p) for p in platforms]
+
+
+def lane_state(state: dict[str, Any], platform: str) -> dict[str, Any] | None:
+    """The benchmarks a platform writes from: its own lane, or the shared one."""
+    lanes = state.get("lanes") or {}
+    if not lanes:
+        return state
+    lane = lanes.get(platform)
+    return lane if lane and lane.get("status") != "failed" else None
+
+
 # ---------------------------------------------------------------- steps ----
 
 
-def step_search(run: Run, inputs: dict[str, Any]) -> None:
+def step_search(run: Run | Lane, inputs: dict[str, Any]) -> None:
     from .video_benchmark_routes import (
         BenchmarkLinksRequest,
         BenchmarkSearchRequest,
@@ -238,7 +362,7 @@ def usable(item: dict[str, Any]) -> bool:
     return seconds is None or 8 <= seconds <= 180
 
 
-def step_pick(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+def step_pick(run: Run | Lane, inputs: dict[str, Any], state: dict[str, Any]) -> None:
     page = run.task(state["search_task_id"])
     items = page.result.get("items") or []
     if state.get("mode") == "links":
@@ -304,7 +428,9 @@ def step_pick(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
     run.save(ranked=ranked[:MAX_TRIES])
 
 
-def step_extract(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+def step_extract(
+    run: Run | Lane, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
     from .video_benchmark_routes import BenchmarkExtractionRequest, extract_candidates
     from .video_writing_routes import save_benchmark_reference
 
@@ -359,7 +485,9 @@ def step_extract(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> Non
         )
 
 
-def step_analyse(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
+def step_analyse(
+    run: Run | Lane, inputs: dict[str, Any], state: dict[str, Any]
+) -> None:
     from .video_writing_contracts import SaveWritingResult, WritingTaskRequest
     from .video_writing_routes import create_task, save_result
 
@@ -492,8 +620,18 @@ def step_facts(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
     run.save(facts_document_id=saved["id"])
 
 
-def versions(state: dict[str, Any]) -> list[dict[str, Any]]:
-    """Three structure rewrites: they use free-text facts best and fail least.
+MAX_VARIANT = 6  # WritingTaskRequest.variant
+
+
+def versions(
+    state: dict[str, Any], count: int = DEFAULT_COUNT, prefix: str = ""
+) -> list[dict[str, Any]]:
+    """Structure rewrites: they use free-text facts best and fail least.
+
+    The first three are what the run always wrote (main benchmark, a new
+    opening hook, the other benchmark or yet another opening); more versions
+    go round the benchmarks with new openings. Keys are ``v1…`` for a run
+    with one platform and ``douyin-v1…`` when two platforms share the run.
 
     (Line-by-line shadow rewriting stays in the manual flow; with facts typed
     freely it rarely finds the slots to swap and often keeps source claims.)
@@ -502,15 +640,94 @@ def versions(state: dict[str, Any]) -> list[dict[str, Any]]:
     main = next(
         (b for b in ready if b["reference_id"] == state["main_reference_id"]), ready[0]
     )
-    other = next((b for b in ready if b is not main), None)
+    others = [b for b in ready if b is not main]
+    other = others[0] if others else None
     plan = [
-        {"key": "v1", "label": "照主对标的结构写", "benchmark": main, "variant": 0},
-        {"key": "v2", "label": "换个开头钩子", "benchmark": main, "variant": 1},
-        {"key": "v3", "label": "照另一条对标写", "benchmark": other, "variant": 0}
+        {"label": "照主对标的结构写", "benchmark": main, "variant": 0},
+        {"label": "换个开头钩子", "benchmark": main, "variant": 1},
+        {"label": "照另一条对标写", "benchmark": other, "variant": 0}
         if other
-        else {"key": "v3", "label": "再换一种开头", "benchmark": main, "variant": 2},
+        else {"label": "再换一种开头", "benchmark": main, "variant": 2},
     ]
-    return [{**version, "mode": "structure"} for version in plan]
+    used = {(v["benchmark"]["reference_id"], v["variant"]) for v in plan}
+    order = [main, *others]
+    names = {
+        id(b): ("主对标" if b is main else f"对标 {i + 1}") for i, b in enumerate(order)
+    }
+    for variant in range(MAX_VARIANT + 1):
+        for bench in order:
+            if len(plan) >= count:
+                break
+            if (bench["reference_id"], variant) in used:
+                continue
+            used.add((bench["reference_id"], variant))
+            plan.append(
+                {
+                    "label": f"照{names[id(bench)]}写，换第 {variant + 1} 种开头"
+                    if variant
+                    else f"照{names[id(bench)]}的结构写",
+                    "benchmark": bench,
+                    "variant": variant,
+                }
+            )
+    while len(plan) < count:  # few benchmarks: repeat the openings
+        plan.append({**plan[len(plan) % 3], "label": "再换一种写法"})
+    plan = plan[:count]
+    return [
+        {**version, "key": f"{prefix}v{i + 1}", "mode": "structure"}
+        for i, version in enumerate(plan)
+    ]
+
+
+def write_plan(
+    inputs: dict[str, Any], state: dict[str, Any]
+) -> tuple[list[dict[str, Any]], list[str]]:
+    """Every version to write, each with its platform, and the platforms
+    that have nothing to write from (their benchmark search failed)."""
+    split = planned(inputs)
+    two = len(split) > 1
+    plan: list[dict[str, Any]] = []
+    skipped: list[str] = []
+    for platform, count in split.items():
+        lane = lane_state(state, platform)
+        if not lane or not any(
+            b.get("analysis_id") for b in lane.get("benchmarks") or []
+        ):
+            skipped.append(platform)
+            continue
+        for version in versions(lane, count, f"{platform}-" if two else ""):
+            plan.append({**version, "platform": platform})
+    return plan, skipped
+
+
+def partial_message(
+    inputs: dict[str, Any], state: dict[str, Any], drafts: list[dict[str, Any]]
+) -> str:
+    """One plain sentence when a platform came back with fewer versions."""
+    split = planned(inputs)
+    if len(split) < 2:
+        return ""
+    lanes = state.get("lanes") or {}
+    done = {
+        p: sum(1 for d in drafts if d.get("platform") == p and d.get("document_id"))
+        for p in split
+    }
+    lost, kept = [], []
+    for platform, count in split.items():
+        name = PLATFORM_LABEL[platform]
+        lane = lanes.get(platform) or {}
+        if lane.get("status") == "failed":
+            lost.append(f"{name}没写成：{lane.get('message') or '没找到可用的对标'}")
+        elif done[platform] == 0:
+            lost.append(f"{name}的 {count} 条都没通过事实检查，没写出来")
+        elif done[platform] < count:
+            lost.append(f"{name}有 {count - done[platform]} 条没通过事实检查")
+        if done[platform]:
+            kept.append(f"{name} {done[platform]} 条")
+    if not lost:
+        return ""
+    tail = f"已写好的{'、'.join(kept)}已存进文案库。" if kept else ""
+    return "；".join(lost) + "。" + tail + "想补另一个平台，可以单独选它再写一次。"
 
 
 def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
@@ -530,7 +747,8 @@ def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
         # A rejected version is written once more; after that it falls back
         # to a different opening on the main benchmark, so three versions come
         # back whenever the facts allow it.
-        tries = [version, version, {**version, "variant": version["variant"] + 3}]
+        fallback = (version["variant"] + 3) % (MAX_VARIANT + 1)
+        tries = [version, version, {**version, "variant": fallback}]
         for attempt, plan in enumerate(tries):
             entry = write_once(plan, attempt)
             if entry.get("document_id"):
@@ -553,13 +771,14 @@ def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
                 facts_document_id=UUID(state["facts_document_id"]),
                 draft_mode=version["mode"],
                 variant=version["variant"],
-                platform=inputs.get("platform") or "douyin",
+                platform=version.get("platform") or inputs.get("platform") or "douyin",
             ),
         )
         done = run.wait([str(task.id)], timeout=600)[0]
         entry = {
             "key": version["key"],
             "label": version["label"],
+            "platform": version.get("platform") or inputs.get("platform") or "douyin",
             "mode": version["mode"],
             "reference_id": bench["reference_id"],
             "task_id": done.id,
@@ -582,9 +801,11 @@ def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
             entry["error"] = done.result.get("validation_issue") or done.error_code
         return entry
 
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        drafts = list(pool.map(write, versions(state)))
-    run.save(drafts=drafts)
+    plan, _ = write_plan(inputs, state)
+    # Three at a time per platform, as one platform always wrote.
+    with ThreadPoolExecutor(max_workers=3 * max(1, len(planned(inputs)))) as pool:
+        drafts = list(pool.map(write, plan))
+    run.save(drafts=drafts, partial_message=partial_message(inputs, state, drafts))
     if not any(d.get("document_id") for d in drafts):
         raise Stop(
             "VIDEO_AUTO_DRAFTS_FAILED",
@@ -609,6 +830,54 @@ DONE_WHEN = {
 }
 
 
+def run_lane(lane: Lane, inputs: dict[str, Any], steps: list[tuple[str, Any]]) -> None:
+    lane_inputs = {**inputs, "platform": lane.platform}
+    for name, func in steps:
+        state = lane.state()
+        key = DONE_WHEN.get(name)
+        if (
+            key
+            and state.get(key)
+            and not (name == "extract" and not state.get("benchmarks"))
+        ):
+            continue
+        lane.save(stage=name)
+        if name == "search":
+            step_search(lane, lane_inputs)
+        else:
+            func(lane, lane_inputs, lane.state())
+
+
+def run_lanes(run: Run, inputs: dict[str, Any], steps: list[tuple[str, Any]]) -> None:
+    """One platform: its steps, a stop ends the run (as always). Two platforms:
+    both lanes side by side; one that stops is marked failed and the other
+    goes on; only when both stop does the run stop."""
+    lanes = lanes_of(run, inputs)
+    if len(lanes) == 1:
+        run_lane(lanes[0], inputs, steps)
+        return
+
+    def guarded(lane: Lane) -> Stop | None:
+        if lane.state().get("status") == "completed":
+            return None
+        lane.save(status="running", error_code=None, message="")
+        try:
+            run_lane(lane, inputs, steps)
+        except Stop as stop:
+            lane.save(status="failed", error_code=stop.code, message=stop.message)
+            return stop
+        except ApiError as error:
+            lane.save(status="failed", error_code=error.code, message=error.message)
+            return Stop(error.code, error.message)
+        lane.save(status="completed")
+        return None
+
+    with ThreadPoolExecutor(max_workers=len(lanes)) as pool:
+        stops = [stop for stop in pool.map(guarded, lanes) if stop]
+    if len(stops) == len(lanes):
+        raise stops[0]
+
+
 def orchestrate(app: Any, workspace: WorkspaceContext, run_id: str) -> None:
     with _LOCK:
         if run_id in _RUNNING:
@@ -623,23 +892,19 @@ def orchestrate(app: Any, workspace: WorkspaceContext, run_id: str) -> None:
 
     threading.Thread(target=beat, daemon=True).start()
     try:
+        inputs = run.row().inputs
+        run_lanes(run, inputs, [s for s in STEPS if s[0] in LANE_STAGES])
         for name, func in STEPS:
-            row = run.row()
-            state = row.result
+            if name in LANE_STAGES:
+                continue
+            state = run.row().result
             key = DONE_WHEN.get(name)
-            if (
-                key
-                and state.get(key)
-                and not (name == "extract" and not state.get("benchmarks"))
-            ):
+            if key and state.get(key):
                 continue
             run.save(stage=name)
-            if name == "search":
-                step_search(run, row.inputs)
-            else:
-                func(run, row.inputs, run.row().result)
-        run.save(stage="done")
-        finish(run, "completed")
+            func(run, inputs, run.row().result)
+        done = run.save(stage="done")
+        finish(run, "completed", message=str(done.get("partial_message") or ""))
     except Stop as stop:
         finish(run, "failed", stop.code, stop.message)
     except ApiError as error:
@@ -735,11 +1000,15 @@ def start(
             "stage": "queued",
             "stage_label": STAGES["queued"],
             "started_at": datetime.now(UTC).isoformat(),
+            # 每个平台写几条（按勾选顺序，奇数时多出的一条给第一个）。
+            "allocation": allocation(body.count, list(body.platforms)),
             # What the user typed, shown again when they start over.
             "request": body.model_dump(
                 mode="json",
                 include={
                     "platform",
+                    "platforms",
+                    "count",
                     "query",
                     "facts_text",
                     "restricted_claims",
@@ -772,10 +1041,17 @@ def resume(
         # New request ids for steps that ended without a result; finished
         # steps (searches, transcripts, saved documents) are kept as they are.
         kept = [d for d in row.result.get("drafts") or [] if d.get("document_id")]
+        lanes = {
+            key: {**lane, "status": "running", "message": ""}
+            if lane.get("status") == "failed"
+            else lane
+            for key, lane in (row.result.get("lanes") or {}).items()
+        }
         row.result = {
             **row.result,
             "drafts": kept,
             "retry": int(row.result.get("retry", 0)) + 1,
+            **({"lanes": lanes} if lanes else {}),
         }
     row.status, row.error_code = "running", None
     session.commit()

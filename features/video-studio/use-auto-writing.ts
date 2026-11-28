@@ -14,7 +14,7 @@ import type { AnalysisDoc, Candidate, Comparison, DraftDoc, DraftLine, Job, Plat
  */
 
 export type AutoBenchmark = { platform_id: string; reason: string; extraction_id: string; reference_id: string; analysis_id?: string; analysis_failed?: boolean; no_speech_note?: boolean };
-export type AutoDraft = { key: string; label: string; mode: "shadow" | "structure"; reference_id: string; task_id: string; document_id: string | null; library_entry_id?: string | null; error?: unknown };
+export type AutoDraft = { key: string; label: string; mode: "shadow" | "structure"; reference_id: string; task_id: string; document_id: string | null; library_entry_id?: string | null; error?: unknown; platform?: "douyin" | "xiaohongshu" };
 export type AutoResult = {
   stage?: string; stage_label?: string; message?: string; started_at?: string;
   search_task_id?: string; mode?: "search" | "links"; candidate_count?: number;
@@ -22,9 +22,19 @@ export type AutoResult = {
   benchmarks?: AutoBenchmark[]; main_reference_id?: string; comparison?: Comparison;
   facts_document_id?: string; drafts?: AutoDraft[];
   request?: Partial<AutoStart>;
+  /** 每个平台写几条（新请求才有）。 */
+  allocation?: Record<string, number>;
+  /** 两个平台分开找对标时，每个平台一条线；只有一个平台或贴链接时没有（结果在顶层）。 */
+  lanes?: Record<string, AutoLane>;
+};
+export type AutoLane = {
+  stage?: string; status?: "running" | "completed" | "failed"; error_code?: string | null; message?: string;
+  search_task_id?: string; mode?: "search" | "links"; candidate_count?: number;
+  ranked?: { platform_id: string; reason: string }[];
+  benchmarks?: AutoBenchmark[]; main_reference_id?: string; comparison?: Comparison;
 };
 export type AutoRun = Job & { result: AutoResult; source_revision?: number };
-export type AutoStart = { platform: Platform; query: string; facts_text: string; restricted_claims: ("price" | "net_quantity" | "health_effect")[]; forbidden_terms: string[] };
+export type AutoStart = { platform: Platform; platforms: ("douyin" | "xiaohongshu")[]; count: number; query: string; facts_text: string; restricted_claims: ("price" | "net_quantity" | "health_effect")[]; forbidden_terms: string[] };
 type Doc = ReferenceDoc | AnalysisDoc | DraftDoc | { id: string; kind: "facts"; created_at: string; reference_document_id: string | null; analysis_document_id: string | null; facts_document_id: string | null; assistance_task_id: string | null; body: unknown };
 type ProjectSession = ReturnType<typeof useProjectSession>["session"];
 
@@ -117,8 +127,9 @@ export function useAutoWriting({ workspaceId, projectId, session }: { workspaceI
     }
     return current;
   };
-  const candidates = (): Map<string, Candidate> => {
-    const page = jobs.find(job => job.id === run?.result.search_task_id) as (Job & { result: { items?: Candidate[] } }) | undefined;
+  /** 一次搜索（默认这次运行的那次；两个平台时传各自的）找到的候选。 */
+  const candidates = (searchTaskId: string | undefined = run?.result.search_task_id): Map<string, Candidate> => {
+    const page = jobs.find(job => job.id === searchTaskId) as (Job & { result: { items?: Candidate[] } }) | undefined;
     return new Map((page?.result.items || []).map(item => [item.platform_id, item]));
   };
 

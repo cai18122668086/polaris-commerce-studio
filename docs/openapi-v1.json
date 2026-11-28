@@ -1602,6 +1602,13 @@
       "AutoWritingRequest": {
         "additionalProperties": false,
         "properties": {
+          "count": {
+            "default": 3,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Count",
+            "type": "integer"
+          },
           "expected_revision": {
             "minimum": 1.0,
             "title": "Expected Revision",
@@ -1629,6 +1636,18 @@
             ],
             "title": "Platform",
             "type": "string"
+          },
+          "platforms": {
+            "items": {
+              "enum": [
+                "douyin",
+                "xiaohongshu"
+              ],
+              "type": "string"
+            },
+            "maxItems": 2,
+            "title": "Platforms",
+            "type": "array"
           },
           "project_id": {
             "format": "uuid",
@@ -11553,6 +11572,27 @@
             "minLength": 1,
             "title": "Script",
             "type": "string"
+          },
+          "source": {
+            "default": "manual",
+            "enum": [
+              "manual",
+              "auto_writing"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "writing_document_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Writing Document Id"
           }
         },
         "required": [

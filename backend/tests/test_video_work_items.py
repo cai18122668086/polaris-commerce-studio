@@ -14,6 +14,7 @@ from sqlalchemy import func, select
 from app.main import create_app
 from app.models import WorkspaceMemberRecord, WorkspaceRecord
 from app.video_generation_models import VideoAvatarRecord, VideoGenerationRecord
+from app.video_work_editing_models import VideoWorkEditingRunRecord
 from app.video_work_models import VideoWorkBatchRecord, VideoWorkItemRecord
 from tests.test_auth_external import (
     FakeExternalAuthBackend,
@@ -349,13 +350,20 @@ def test_migration_round_trips_and_matches_models(video):
     module = _migration()
     assert module.down_revision == "20261125_0053"
     engine = client.app.state.engine
+    # Later migrations' tables reference video_work_items; PostgreSQL enforces
+    # those foreign keys on DROP (SQLite does not), so set them aside too.
+    dependents = [VideoWorkEditingRunRecord.__table__]
     with engine.begin() as connection:
+        for table in dependents:
+            table.drop(connection)
         VideoWorkItemRecord.__table__.drop(connection)
         VideoWorkBatchRecord.__table__.drop(connection)
         with Operations.context(MigrationContext.configure(connection)):
             module.upgrade()
             module.downgrade()
             module.upgrade()
+        for table in dependents:
+            table.create(connection)
     batch = create(client, ws, batch_body(item("迁移后")))
     assert batch["items"][0]["script_text"] == "迁移后"
 

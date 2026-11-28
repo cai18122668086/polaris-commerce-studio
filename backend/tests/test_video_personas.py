@@ -2,6 +2,7 @@
 
 from uuid import uuid4
 
+from app.models import UserRecord
 from app.video_generation_models import VideoAvatarRecord, VideoGenerationRecord
 from app.video_persona_models import VideoPersonaRecord
 from tests.test_auth_external import verified_identity
@@ -77,6 +78,13 @@ def test_personas_are_isolated_per_user(video_gen):
     mine = create(video_gen).json()
     with client.app.state.session_factory() as session:
         # 同一工作区的成员身份不足以看到别人的固定形象
+        # （PostgreSQL 强制 owner_user_id 外键，所以先建一个真实用户）
+        session.add(
+            UserRecord(
+                id="different-owner", auth_provider="test", auth_subject="other"
+            )
+        )
+        session.flush()
         session.get(VideoPersonaRecord, mine["id"]).owner_user_id = "different-owner"
         session.commit()
     assert client.get(root + "/personas").json() == []

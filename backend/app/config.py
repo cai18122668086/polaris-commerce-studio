@@ -170,7 +170,7 @@ class Settings(BaseSettings):
     # 磁盘清理（B14，editing-maintenance 执行）：间隔 0 = 关闭。
     video_media_cleanup_interval_seconds: int = Field(default=3600, ge=0)
     # 未被作品引用的封面候选保留天数。
-    video_cover_candidate_retention_days: int = Field(default=14, ge=1)
+    video_cover_candidate_retention_days: float = Field(default=14, gt=0)
     # 作品海报缓存上限，超过按最近访问时间淘汰（随时可重新生成）。
     video_poster_cache_max_bytes: int = Field(default=536_870_912, ge=0)
     # 免费视频空镜：现有剪辑流水线把任何视频素材都按「录屏」整段播放，

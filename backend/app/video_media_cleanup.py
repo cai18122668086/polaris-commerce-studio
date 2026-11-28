@@ -111,7 +111,7 @@ def referenced_cover_ids(session: Session) -> set[str]:
 
 
 def expired_cover_candidates(
-    session: Session, retention_days: int, now: datetime | None = None
+    session: Session, retention_days: float, now: datetime | None = None
 ) -> list[VideoCoverCandidateRecord]:
     cutoff = (now or datetime.now(UTC)) - timedelta(days=retention_days)
     keep = referenced_cover_ids(session)
@@ -249,14 +249,16 @@ def main() -> None:
 
     parser = argparse.ArgumentParser(description="视频空间磁盘清理")
     parser.add_argument("--dry-run", action="store_true", help="只列出将删除的文件")
-    parser.add_argument("--retention-days", type=int, help="临时覆盖封面候选保留天数")
+    parser.add_argument(
+        "--retention-days", type=float, help="临时覆盖封面候选保留天数（可带小数）"
+    )
     parser.add_argument("--poster-cap-mb", type=int, help="临时覆盖海报缓存上限")
     args = parser.parse_args()
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     settings = Settings()
     if args.retention_days is not None:
-        if args.retention_days < 1:
-            parser.error("--retention-days 至少 1 天")
+        if args.retention_days <= 0:
+            parser.error("--retention-days 必须大于 0")
         settings = settings.model_copy(
             update={"video_cover_candidate_retention_days": args.retention_days}
         )

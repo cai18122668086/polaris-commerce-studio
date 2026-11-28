@@ -6,8 +6,11 @@ references are plain ids validated by the routes so every line can migrate on
 its own.
 """
 
+from datetime import datetime
+
 from sqlalchemy import (
     CheckConstraint,
+    DateTime,
     ForeignKey,
     Index,
     Integer,
@@ -106,3 +109,7 @@ class VideoWorkItemRecord(TimestampMixin, Base):
     error: Mapped[str | None] = mapped_column(Text)
     # Earlier task ids replaced by a retry, oldest first: {"generation": [...]}.
     history: Mapped[dict] = mapped_column(json_type(), default=dict)
+    # B1: hidden from every list once set; tasks and files are kept.
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # C10: the merchant marked this video as published (their own note only).
+    published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

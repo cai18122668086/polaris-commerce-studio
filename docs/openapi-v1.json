@@ -15458,6 +15458,17 @@
             "title": "Can Retry",
             "type": "boolean"
           },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
           "item_id": {
             "title": "Item Id",
             "type": "string"

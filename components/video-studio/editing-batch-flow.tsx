@@ -162,7 +162,20 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
 
   const toggle = (row: EditingCandidate) => {
     if (!row.ready || started) return;
+    const adding = !selected.some(item => item.key === row.key);
     setSelected(current => current.some(item => item.key === row.key) ? current.filter(item => item.key !== row.key) : [...current, row]);
+    // A talking result from an older talking batch (not in the recent list) is still that
+    // batch's item: say so right away and go there, instead of failing at「开始剪辑」.
+    if (adding && row.kind === "library" && jobsById.has(row.refId)) {
+      void apiClient.GET(`${root}/editing-source-owners`, { params: { path: { workspace_id: workspaceId }, query: { generation_ids: row.refId } }, signal: AbortSignal.timeout(10000) })
+        .then(result => {
+          const owner = unwrapApiResponse(result)[0];
+          if (!owner) return;
+          setSelected(current => current.filter(item => item.key !== row.key));
+          setNotice("这条口播属于一个口播批次，已为你打开那一批（标题和正文会一起带上）。");
+          router.push(editingHref(owner.batch_id));
+        }).catch(() => undefined);
+    }
   };
 
   // Takes a plain array: the input's FileList is live and is emptied when the input is reset.

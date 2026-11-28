@@ -373,6 +373,8 @@ def test_a_talking_result_is_never_edited_as_a_copy(video, tmp_path, monkeypatch
         item.generation_task_id = job_id
         item.source_video_ref = {"kind": "talking", "id": job_id}
         session.commit()
+        session.refresh(item)
+        session.expunge(item)
     copy = client.post(
         base(ws) + "/work-batches",
         json={
@@ -386,6 +388,12 @@ def test_a_talking_result_is_never_edited_as_a_copy(video, tmp_path, monkeypatch
             ],
         },
     ).json()
+    owners = client.get(
+        base(ws) + "/editing-source-owners", params={"generation_ids": job_id}
+    ).json()
+    assert owners == [
+        {"generation_task_id": job_id, "batch_id": talking["id"], "item_id": item.id}
+    ]
     refused = submit(client, ws, copy)
     assert refused.status_code == 409
     error = refused.json()["error"]

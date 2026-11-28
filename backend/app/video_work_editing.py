@@ -777,6 +777,43 @@ def editing_status(
     return editing_view(session, batch)
 
 
+class EditingSourceOwner(StrictVideoModel):
+    generation_task_id: str
+    batch_id: str
+    item_id: str
+
+
+@router.get("/editing-source-owners", response_model=list[EditingSourceOwner])
+def editing_source_owners(
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+    generation_ids: str = "",
+) -> list[EditingSourceOwner]:
+    """Which talking work item a talking result belongs to (read-only).
+
+    The editing page asks before it would create a direct-editing batch, so a
+    talking result is always edited as its own item and no empty batch is left.
+    """
+    ids = [value for value in generation_ids.split(",") if value][:50]
+    if not ids:
+        return []
+    rows = session.scalars(
+        select(VideoWorkItemRecord).where(
+            VideoWorkItemRecord.workspace_id == workspace.workspace_id,
+            VideoWorkItemRecord.owner_user_id == workspace.principal.user_id,
+            VideoWorkItemRecord.generation_task_id.in_(ids),
+        )
+    )
+    return [
+        EditingSourceOwner(
+            generation_task_id=row.generation_task_id or "",
+            batch_id=row.batch_id,
+            item_id=row.id,
+        )
+        for row in rows
+    ]
+
+
 class EditingQueueView(StrictVideoModel):
     tasks_ahead: int
     minutes_ahead: int

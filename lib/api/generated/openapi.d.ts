@@ -2188,6 +2188,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/editing-source-owners": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Editing Source Owners
+         * @description Which talking work item a talking result belongs to (read-only).
+         *
+         *     The editing page asks before it would create a direct-editing batch, so a
+         *     talking result is always edited as its own item and no empty batch is left.
+         */
+        get: operations["editing_source_owners_api_v1_video_studio_workspaces__workspace_id__editing_source_owners_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/editing-sources": {
         parameters: {
             query?: never;
@@ -8050,6 +8073,15 @@ export interface components {
             /** Script Sha256 */
             script_sha256: string | null;
             writing_origin?: components["schemas"]["VideoWritingOrigin"] | null;
+        };
+        /** EditingSourceOwner */
+        EditingSourceOwner: {
+            /** Batch Id */
+            batch_id: string;
+            /** Generation Task Id */
+            generation_task_id: string;
+            /** Item Id */
+            item_id: string;
         };
         /** EditingSourceUploadResponse */
         EditingSourceUploadResponse: {
@@ -16140,6 +16172,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["EditingQueueView"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    editing_source_owners_api_v1_video_studio_workspaces__workspace_id__editing_source_owners_get: {
+        parameters: {
+            query?: {
+                generation_ids?: string;
+            };
+            header?: never;
+            path: {
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EditingSourceOwner"][];
                 };
             };
             /** @description Validation Error */

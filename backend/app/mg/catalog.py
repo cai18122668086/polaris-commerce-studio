@@ -219,7 +219,19 @@ def validate_params(
         number = out.get("value") or out.get("price") or ""
         if not _NUMERIC.match(number):
             return None
+    if not COMPONENTS[component].get("fullscreen") and any(
+        _whole_clause(str(value), source)
+        for key, value in out.items()
+        if key not in ("value", "unit", "price")
+    ):
+        return None
     return out
+
+
+def _whole_clause(text: str, source: str) -> bool:
+    """A card repeating a whole spoken clause duplicates the caption below it."""
+    clauses = {plain(c) for c in re.split(r"[，。！？!?；;,.\s]+", source) if c}
+    return plain(text) in clauses
 
 
 def cue_window(

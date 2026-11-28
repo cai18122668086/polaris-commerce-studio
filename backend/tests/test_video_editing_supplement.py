@@ -1234,3 +1234,15 @@ def test_overlay_chain_enables_by_time_not_frame_counter(tmp_path, monkeypatch):
     assert "between(n," not in graph
     assert "between(t,0.000000,1.300000)" in graph
     assert "between(t,10.020000,11.620000)" in graph
+
+
+def test_mg_card_text_must_not_repeat_a_whole_caption_clause():
+    source = "再看详情规格和使用场景，有没有讲完整，"
+    assert validate_params("feature_card", {"title": "有没有讲完整"}, source) is None
+    assert validate_params("feature_card", {"title": "详情规格"}, source) == {
+        "title": "详情规格"
+    }
+    # Full-screen title covers the captions: allowed to be a whole clause.
+    assert validate_params("title_reveal", {"text": "新品上架前"}, "新品上架前，") == {
+        "text": "新品上架前"
+    }

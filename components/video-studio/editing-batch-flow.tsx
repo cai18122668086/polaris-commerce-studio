@@ -12,7 +12,7 @@ import type { components } from "@/lib/api/generated/openapi";
 import type { GenerationJob } from "@/features/video-studio/library";
 import { FREE_TRIAL_TEXT, isPriced, whenPriced, type CostNote } from "@/features/video-studio/credit-notes";
 import { editingHref, finishHref } from "@/features/video-studio/flow-params";
-import { editingMessage } from "@/features/video-studio/editing-presentation";
+import { editingMessage, isTemplateListed } from "@/features/video-studio/editing-presentation";
 import { templateAppearance } from "@/features/video-studio/template-appearance";
 import {
   PROGRESS_LABELS, SOURCE_LABEL, batchFinished, batchPlan, candidateKey, durationLabel, finishAction, generationSummary, itemStatus, templateNeeds,
@@ -302,7 +302,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
   const openRedo = (target: { itemId: string } | { batch: true }, current?: string | null) => {
     setRedoTarget(target);
     // Default to a different template than the one used: the point is to change it.
-    setRedoTemplate(templates.find(card => card.id !== current && !card.id.startsWith("chenxi"))?.id ?? "");
+    setRedoTemplate(templates.find(card => card.id !== current && isTemplateListed(card.id))?.id ?? "");
   };
   const redo = async () => {
     if (!redoTarget || !redoTemplate || !batch) return;
@@ -382,7 +382,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
         {selected.length > 1 && <label className={styles.switch}><input type="checkbox" checked={perItem} onChange={event => setPerItem(event.target.checked)} />每条单独选模板</label>}
         {perItem && <ul className={styles.perItem}>{selected.map((row, index) => {
           return <li key={row.key}><span>{row.title || `视频 ${index + 1}`}</span><select aria-label={`${row.title} 的模板`} value={itemTemplates[row.key] ?? template?.id ?? ""} onChange={event => setItemTemplates(current => ({ ...current, [row.key]: event.target.value }))}>
-            {templates.filter(card => !card.id.startsWith("chenxi")).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
+            {templates.filter(card => isTemplateListed(card.id)).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
           </select></li>;
         })}</ul>}
       </section>
@@ -422,7 +422,7 @@ export function EditingBatchFlow({ workspaceId, batchId, jobs, uploadProjectId, 
       {redoTarget && <div className={styles.redo} role="dialog" aria-label="换模板重剪">
         <b>{"batch" in redoTarget ? `整批换模板重剪（${redoCount} 条）` : "这一条换模板重剪"}</b>
         <label><span>新模板</span><select aria-label="重剪用的模板" value={redoTemplate} onChange={event => setRedoTemplate(event.target.value)}>
-          {templates.filter(card => !card.id.startsWith("chenxi")).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
+          {templates.filter(card => isTemplateListed(card.id)).map(card => <option key={card.id} value={card.id}>{templateAppearance(card).collection} · {templateAppearance(card).name}</option>)}
         </select></label>
         <p className={styles.fine}>会用同一条口播按新模板重新编排、生成一次（口播识别结果直接复用）。{isPriced(cost?.credits) ? `每条 ${cost?.credits} 积分，共 ${(cost?.credits ?? 0) * redoCount} 积分。` : `${FREE_TRIAL_TEXT}。`}旧成片会保留在「上一版」里，可以随时查看、下载；剪完后成片页会提示重新生成封面。</p>
         <div className={styles.redoActions}><button type="button" className={styles.primary} disabled={busy || !redoTemplate} onClick={() => void redo()}>{busy ? "正在提交…" : `确认重剪${redoCount > 1 ? ` ${redoCount} 条` : ""}`}</button><button type="button" className={styles.secondary} disabled={busy} onClick={() => setRedoTarget(null)}>取消</button></div>

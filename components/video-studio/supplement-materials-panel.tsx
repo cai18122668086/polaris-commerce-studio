@@ -625,6 +625,7 @@ function MgSection({ value, update, sources, items }: { value: SupplementMateria
         <h4>MG 动效</h4>
         <span className={styles.note}>没有素材的段落用动效补；全屏动效每段不超过 2.5 秒</span>
       </div>
+      {items.length > 1 && <p className={styles.note}>MG 动效按整批设置：本批全部 {items.length} 条视频都会使用，风格相同。</p>}
       {unsupported > 0 && <p className={styles.note}>{unsupported} 条视频用的模板不支持 MG 动效，这几条不会加。</p>}
       <div className={styles.segment} role="radiogroup" aria-label="动效风格">
         {(sources?.mg_styles.map(row => row.key) ?? (["paper", "ink", "ember"] as SupplementStyle[])).map(key => (

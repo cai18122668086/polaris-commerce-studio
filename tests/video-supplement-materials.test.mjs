@@ -104,3 +104,10 @@ test("panel copy avoids internal terms and new colours avoid blue/purple", () =>
     assert.ok(h < 190 || h > 300, `${hex} is blue/purple`);
   }
 });
+
+test("MG is a whole-batch setting and the panel says so", () => {
+  const panel = readFileSync("components/video-studio/supplement-materials-panel.tsx", "utf8");
+  assert.match(panel, /MG 动效按整批设置：本批全部/);
+  let v = m.toggleSource(m.setMode(m.DEFAULT_SUPPLEMENT, "custom"), "mg", true);
+  assert.deepEqual(m.supplementForWorkItem(v, "w1").supplement, m.supplementForWorkItem(v, "w2").supplement);
+});

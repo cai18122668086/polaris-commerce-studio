@@ -38,7 +38,13 @@ from .video_editing_material_routes import response as material_response
 from .video_editing_material_routes import scope as material_scope
 from .video_editing_materials import material_file
 from .video_editing_stock_fetch import FetchError, cache_root, fetch_media, fetch_thumb
-from .video_editing_stock_sources import LABELS, Candidate, search_sentence, states
+from .video_editing_stock_sources import (
+    LABELS,
+    Candidate,
+    atomic_write,
+    search_sentence,
+    states,
+)
 from .video_editing_supplement_plan import ScriptAnalysis, analyze_script
 from .video_editing_task_models import (
     EditingImageRequestRecord,
@@ -135,9 +141,7 @@ def _remember(settings: Settings, candidate: Candidate) -> str:
     path = folder / f"{token}.json"
     if not path.is_file():
         folder.mkdir(parents=True, exist_ok=True)
-        tmp = folder / f".{token}.tmp"
-        tmp.write_text(json.dumps(candidate.to_json(), ensure_ascii=False), "utf-8")
-        tmp.replace(path)
+        atomic_write(path, json.dumps(candidate.to_json(), ensure_ascii=False))
     return token
 
 

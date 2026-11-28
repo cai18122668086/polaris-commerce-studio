@@ -1246,3 +1246,111 @@ def test_mg_card_text_must_not_repeat_a_whole_caption_clause():
     assert validate_params("title_reveal", {"text": "新品上架前"}, "新品上架前，") == {
         "text": "新品上架前"
     }
+
+
+# ------------------------------------------------- concurrent cache writes
+
+
+def _race_candidate() -> Candidate:
+    return Candidate(
+        provider="pixabay",
+        provider_ref="77",
+        kind="image",
+        width=1000,
+        height=1500,
+        duration_ms=None,
+        thumb_url="https://pixabay.com/get/77s.jpg",
+        download_url="https://pixabay.com/get/77.jpg",
+        page_url="https://pixabay.com/photos/77/",
+        author="Lee",
+        author_url=None,
+        license="Pixabay Content License（可免费商用，无需署名）",
+        license_url="https://pixabay.com/service/license-summary/",
+    )
+
+
+def _leftover_temps(root: Path) -> list[Path]:
+    return [p for p in root.rglob("*") if p.is_file() and p.name.startswith(".")]
+
+
+def test_parallel_remember_of_same_candidate_never_fails(tmp_path, video):
+    """线上 11-28：一次搜索里几句话并行，搜到同一张图时共用临时文件名 → 500。"""
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app import video_editing_supplement_routes as routes
+
+    settings = video[4]
+    settings.video_stock_cache_dir = tmp_path / "cache"
+    candidate = _race_candidate()
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        tokens = list(
+            pool.map(lambda _: routes._remember(settings, candidate), range(32))
+        )
+    assert len(set(tokens)) == 1
+    assert routes._recall(settings, tokens[0]).download_url == candidate.download_url
+    assert _leftover_temps(settings.video_stock_cache_dir) == []
+
+
+def test_parallel_import_of_same_image_never_fails(tmp_path, video, monkeypatch):
+    """两次导入同时下载同一张图：不 500，也不会删掉对方刚写好的文件。"""
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+
+    from app import video_editing_stock_fetch as fetch
+
+    settings = video[4]
+    settings.video_stock_cache_dir = tmp_path / "cache"
+    buffer = io.BytesIO()
+    Image.new("RGB", (1000, 1500), (230, 200, 170)).save(buffer, format="JPEG")
+    payload = buffer.getvalue()
+    gate = threading.Barrier(6)
+
+    def slow_download(provider, url, limit, client=None):
+        gate.wait(timeout=10)  # everyone writes at the same moment
+        return payload, "image/jpeg"
+
+    monkeypatch.setattr(fetch, "download", slow_download)
+    candidate = _race_candidate()
+    with ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(
+            pool.map(lambda _: fetch.fetch_media(settings, candidate), range(6))
+        )
+    paths = {path for path, *_ in results}
+    assert len(paths) == 1 and next(iter(paths)).is_file()
+    assert all(mime == "image/jpeg" for _, mime, *_ in results)
+    assert _leftover_temps(settings.video_stock_cache_dir) == []
+
+
+def test_failed_import_keeps_a_parallel_finished_file(tmp_path, video, monkeypatch):
+    """一个导入失败时，只清理它自己的临时文件，不删别的请求刚写好的 media.jpg。"""
+    from app import video_editing_stock_fetch as fetch
+
+    settings = video[4]
+    settings.video_stock_cache_dir = tmp_path / "cache"
+    candidate = _race_candidate()
+    final = fetch._entry(settings, candidate) / "media.jpg"
+
+    def other_request_finishes_then_this_one_fails(provider, url, limit, client=None):
+        final.write_bytes(b"done-by-other-request")
+        raise FetchError("STOCK_DOWNLOAD")
+
+    monkeypatch.setattr(fetch, "download", other_request_finishes_then_this_one_fails)
+    with pytest.raises(FetchError):
+        fetch.fetch_media(settings, candidate)
+    assert final.read_bytes() == b"done-by-other-request"
+
+
+def test_failed_import_leaves_no_empty_entry(tmp_path, video, monkeypatch):
+    from app import video_editing_stock_fetch as fetch
+
+    settings = video[4]
+    settings.video_stock_cache_dir = tmp_path / "cache"
+    candidate = _race_candidate()
+
+    def broken(provider, url, limit, client=None):
+        raise FetchError("STOCK_DOWNLOAD")
+
+    monkeypatch.setattr(fetch, "download", broken)
+    with pytest.raises(FetchError):
+        fetch.fetch_media(settings, candidate)
+    assert not fetch._entry(settings, candidate).exists()

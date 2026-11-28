@@ -13,18 +13,25 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import io
 import os
 import shutil
 import subprocess
+import uuid
 from pathlib import Path
 
 import httpx
 from PIL import Image, ImageOps
 
 from .config import Settings
-from .video_editing_stock_sources import USER_AGENT, Candidate, allowed_url
+from .video_editing_stock_sources import (
+    USER_AGENT,
+    Candidate,
+    allowed_url,
+    atomic_write,
+)
 
 IMAGE_LIMIT = 15 * 1024 * 1024
 VIDEO_LIMIT = 80 * 1024 * 1024
@@ -168,9 +175,7 @@ def fetch_media(
                 candidate.provider, candidate.download_url, IMAGE_LIMIT, client=client
             )
             data, width, height = normalise_image(payload)
-            tmp = entry / ".media.jpg"
-            tmp.write_bytes(data)
-            tmp.replace(final)
+            atomic_write(final, data)
             result = (final, "image/jpeg", width, height)
         else:
             payload, mime = download(
@@ -178,17 +183,24 @@ def fetch_media(
             )
             if not (mime.startswith("video/") or mime == "application/octet-stream"):
                 raise FetchError("STOCK_FORMAT")
-            raw = entry / ".raw"
+            token = uuid.uuid4().hex
+            raw = entry / f".raw.{token}"
+            tmp = entry / f".media.{token}.mp4"
             raw.write_bytes(payload)
             try:
-                tmp = entry / ".media.mp4"
                 transcode_video(settings, raw, tmp)
                 tmp.replace(final)
             finally:
                 raw.unlink(missing_ok=True)
+                tmp.unlink(missing_ok=True)
             result = (final, "video/mp4", candidate.width, candidate.height)
     except BaseException:
-        shutil.rmtree(entry, ignore_errors=True)
+        # Only this call's temp files are removed (above); never remove the
+        # entry itself while it holds a file: a parallel import of the same
+        # candidate may have just written its final file there.
+        if not final.is_file():
+            with contextlib.suppress(OSError):
+                entry.rmdir()  # only succeeds when empty
         raise
     evict(settings)
     return result

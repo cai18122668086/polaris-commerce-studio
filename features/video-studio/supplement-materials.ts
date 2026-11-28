@@ -143,17 +143,27 @@ export function splitSentences(text: string): string[] {
 
 export const MG_UNSUPPORTED = "此模板画面已有信息卡，暂不支持 MG";
 
+/** 当前模板库里能用 MG 的模板（中文名），按后端白名单顺序；隐藏的模板不列出。 */
+export function mgTemplateChoices(mgTemplates: string[] | undefined, nameOf: (id: string) => string | undefined): { id: string; name: string }[] {
+  return (mgTemplates ?? []).flatMap(id => {
+    const name = nameOf(id);
+    return name ? [{ id, name }] : [];
+  });
+}
+
 /** MG 只在后端白名单模板上开放（人物铺满画面、背景层没有信息卡）。 */
 export function mgSupported(item: SupplementWorkItem, mgTemplates?: string[]): boolean {
   if (item.supports_mg === false) return false;
   return !mgTemplates || !item.template_id || mgTemplates.includes(item.template_id);
 }
 
-export function sourceBlocker(key: SupplementSourceKey, items: SupplementWorkItem[], states?: SourceState[], mgTemplates?: string[]): string | null {
+export function sourceBlocker(key: SupplementSourceKey, items: SupplementWorkItem[], states?: SourceState[], mgTemplates?: string[], mgNames?: string[]): string | null {
   const state = states?.find(row => row.key === key);
   if (states && (!state || !state.available)) return state?.reason || "暂未开通";
   if (key === "mg") {
-    if (items.length && items.every(item => !mgSupported(item, mgTemplates))) return MG_UNSUPPORTED;
+    if (items.length && items.every(item => !mgSupported(item, mgTemplates))) {
+      return mgNames?.length ? `当前模板暂不支持动效，可用：${mgNames.join("、")}` : MG_UNSUPPORTED;
+    }
     return null;
   }
   if (items.length && items.every(item => item.supports_images === false)) return "当前模板没有配图位置，换一个支持配图的模板后可用";

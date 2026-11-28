@@ -529,7 +529,9 @@ def step_analyse(
             "这次拆解没有通过检查，可以点「继续」再试一次。",
         )
     main = ready[0]["reference_id"]
-    if len(ready) >= 2 and not state.get("comparison"):
+    # 第三轮（run 带 brief）：对比改为写稿前提炼骨架，这里不再推荐主对标。
+    brief_run = bool(getattr(run, "row", None) and run.row().result.get("brief"))
+    if len(ready) >= 2 and not state.get("comparison") and not brief_run:
         task = run.call(
             create_task,
             WritingTaskRequest(
@@ -736,6 +738,12 @@ def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
     from .video_writing_contracts import SaveWritingResult, WritingTaskRequest
     from .video_writing_routes import create_task, store_result
 
+    if state.get("brief"):
+        # 第三轮：按简报和角度写、批量质检、不自动入库（video_auto_drafting）。
+        from .video_auto_drafting import step_write_brief
+
+        step_write_brief(run, inputs, state)
+        return
     project = inputs["project_id"]
     existing = {d["key"]: d for d in state.get("drafts") or []}
 
@@ -796,7 +804,8 @@ def step_write(run: Run, inputs: dict[str, Any], state: dict[str, Any]) -> None:
                 SaveWritingResult(request_id=UUID(done.id), task_id=UUID(done.id)),
             )
             entry["document_id"] = saved["id"]
-            entry["library_entry_id"] = saved.get("library_entry_id")
+            if saved.get("library_entry_id"):
+                entry["library_entry_id"] = saved["library_entry_id"]
         else:
             entry["error"] = done.result.get("validation_issue") or done.error_code
         return entry

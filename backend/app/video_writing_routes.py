@@ -54,6 +54,7 @@ from .video_writing_contracts import (
     SaveWritingResult,
     SourceMetrics,
     WritingAnalysis,
+    WritingBriefDraft,
     WritingDocumentPage,
     WritingDraft,
     WritingFacts,
@@ -80,6 +81,9 @@ router = APIRouter(
 
 
 PLACEHOLDER = re.compile(r"【[^】]*】|\[[^\]]*\]|[XＸxｘ]{2,}|＿{2,}|_{2,}|待补|待填")
+
+
+BRIEF_SCHEMA = "tengli.brief-draft/1"
 
 
 def ratio(item: dict[str, Any], key: str) -> float | None:
@@ -668,6 +672,20 @@ def store_result(
             parsed, WritingReference.model_validate(task.inputs["reference"])
         )
         content = parsed.model_dump(mode="json")
+    elif task.inputs.get("draft_mode") == "brief":
+        # 第三轮 brief 模式：按简报写的稿，用同一套硬规则复核后保存。
+        from .video_brief_writing import check_brief, sources_of
+
+        brief_draft = WritingBriefDraft.model_validate(task.result["draft"])
+        card, source, teardown = sources_of(task.inputs)
+        text = check_brief(
+            brief_draft, task.inputs["brief_basis"], card, source, teardown
+        )
+        content = {
+            "draft": brief_draft.model_dump(mode="json"),
+            "text": text,
+            "shape_check": task.result["shape_check"],
+        }
     else:
         draft_model = (
             WritingStructureDraft
@@ -695,7 +713,9 @@ def store_result(
         **parents,
     )
     result = document_response(row)
-    if kind == "draft":
+    # Brief-mode drafts are kept in the run; the user ticks which go to the
+    # library (第三轮). Every other draft is ingested as before.
+    if kind == "draft" and task.inputs.get("draft_mode") != "brief":
         entry = library.ingest_draft(
             session,
             workspace,
@@ -722,11 +742,15 @@ def revision_basis(
     ):
         raise changed()
     sources = {}
+    # A brief-mode draft written from a built-in skeleton has no benchmark.
+    brief = (parent.body.get("draft") or {}).get("schema_version") == BRIEF_SCHEMA
     for kind, ident in (
         ("reference", parent.reference_document_id),
         ("analysis", parent.analysis_document_id),
         ("facts", parent.facts_document_id),
     ):
+        if ident is None and brief and kind != "facts":
+            continue
         if ident is None:
             raise changed()
         source = own_document(session, workspace, ident, kind)
@@ -736,7 +760,11 @@ def revision_basis(
         ):
             raise changed()
         sources[kind] = source
-    if sources["analysis"].reference_document_id != sources["reference"].id:
+    if ("analysis" in sources or "reference" in sources) and (
+        "analysis" not in sources
+        or "reference" not in sources
+        or sources["analysis"].reference_document_id != sources["reference"].id
+    ):
         raise changed()
     if parent.assistance_task_id:
         task = session.get(VideoAssistanceRecord, parent.assistance_task_id)
@@ -841,6 +869,8 @@ def revise_draft(
     parent = own_document(session, workspace, str(document_id), "draft")
     own_project(session, workspace, parent.project_id)
     basis, sources = revision_basis(session, workspace, parent)
+    if parent.body["draft"].get("schema_version") == BRIEF_SCHEMA:
+        return revise_brief_draft(parent, body, basis, sources, workspace, session)
     try:
         stored = parent.body["draft"]
         model = (
@@ -915,6 +945,95 @@ def revise_draft(
     return document_response(revised)
 
 
+def revise_brief_draft(
+    parent: VideoWritingDocument,
+    body: ReviseWritingDraft,
+    basis: dict,
+    sources: dict[str, VideoWritingDocument],
+    workspace: WorkspaceContext,
+    session: Session,
+) -> dict:
+    """逐句修改一条 brief 模式的稿：同一套事实硬规则，不卡字数和重复。"""
+    from .video_brief_writing import check_brief, spoken_chars
+
+    brief_basis = basis.get("brief_basis") or {}
+    try:
+        if not body.title.strip() or any(
+            not line.text.strip() for line in body.sentences
+        ):
+            raise ValueError("A revised draft needs a title and actual spoken lines")
+        stored = parent.body["draft"]
+        draft = WritingBriefDraft.model_validate(
+            {
+                **stored,
+                "title": body.title,
+                "sentences": [
+                    {"text": line.text, "fact_ids": []} for line in body.sentences
+                ],
+                **(
+                    {"publish_title": body.publish_title}
+                    if body.publish_title is not None
+                    else {}
+                ),
+                **(
+                    {"publish_body": body.publish_body}
+                    if body.publish_body is not None
+                    else {}
+                ),
+            }
+        )
+        text = check_brief(
+            draft,
+            brief_basis,
+            WritingFacts.model_validate(sources["facts"].body),
+            WritingReference.model_validate(sources["reference"].body)
+            if "reference" in sources
+            else None,
+            WritingAnalysis.model_validate(sources["analysis"].body)
+            if "analysis" in sources
+            else None,
+            strict=False,
+        )
+    except (KeyError, TypeError, ValueError) as error:
+        hint = getattr(error, "hint", "")
+        raise ApiError(
+            422,
+            "VIDEO_WRITING_REVISION_INVALID",
+            f"修改没有通过检查：{hint}"
+            if hint
+            else "修改没有通过检查，请核对新增的文字。",
+        ) from error
+    words = brief_basis.get("words")
+    revised = create_document(
+        session,
+        workspace,
+        parent.project_id,
+        body.request_id,
+        "draft",
+        {
+            "draft": draft.model_dump(mode="json"),
+            "text": text,
+            "shape_check": {
+                "verdict": "PASS",
+                "method": "brief-hard-rules",
+                "warnings": [],
+                "failures": [],
+                "chars": spoken_chars(text),
+                "word_range": list(words) if words else None,
+            },
+            "revision": {
+                "parent_document_id": parent.id,
+                "parent_document_sha256": parent.body_sha256,
+                "document_hashes": basis["document_hashes"],
+                "brief_basis": brief_basis,
+            },
+        },
+        **{kind + "_document_id": source.id for kind, source in sources.items()},
+    )
+    library.follow_revision(session, workspace, parent.id, revised)
+    return document_response(revised)
+
+
 @router.post(
     "/writing-documents/{document_id}/apply", response_model=VideoWriteResponse
 )
@@ -944,9 +1063,11 @@ def apply_draft(
         raise ApiError(409, "VIDEO_WRITING_INPUTS_CHANGED", "输入资料版本不一致。")
     project = own_project(session, workspace, document.project_id)
     stored = document.body["draft"]
-    draft_model = (
+    draft_model: type[WritingDraft | WritingStructureDraft | WritingBriefDraft] = (
         WritingStructureDraft
         if stored.get("schema_version") == "tengli.structure-draft/1"
+        else WritingBriefDraft
+        if stored.get("schema_version") == BRIEF_SCHEMA
         else WritingDraft
     )
     draft = draft_model.model_validate(stored)

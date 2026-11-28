@@ -1001,6 +1001,11 @@ def plan_writing(
 ) -> tuple[dict, dict]:
     if not service.settings.video_writing_workflow_enabled:
         raise ValueError("Writing workflow is not enabled")
+    if kind == "fact_draft" and inputs.get("draft_mode") == "brief":
+        # 第三轮：按简报写（只有自动流程在开关打开时会排这种任务）。
+        from .video_brief_writing import plan_brief_draft
+
+        return plan_brief_draft(service, inputs)
     rules = verify_writing_package(service.settings.video_writing_library_dir)
     reference = WritingReference.model_validate(inputs["reference"])
     mode = inputs.get("draft_mode", "shadow")

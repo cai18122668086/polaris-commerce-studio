@@ -245,6 +245,14 @@ class WritingStructureDraft(DraftContent):
     sentences: list[StructureDraftLine] = Field(min_length=1, max_length=100)
 
 
+class WritingBriefDraft(DraftContent):
+    """第三轮 brief 模式：按简报写的口播稿，一行一句，没有对标段落或原句映射。"""
+
+    schema_version: Literal["tengli.brief-draft/1"] = "tengli.brief-draft/1"
+    sentences: list[SpokenDraftLine] = Field(min_length=1, max_length=100)
+    angle_id: str = Field(default="", max_length=40)
+
+
 class WritingVersionSources(StrictVideoModel):
     origin: VideoWritingOrigin
     reference: WritingReference
@@ -342,7 +350,8 @@ class ReviseWritingDraft(StrictVideoModel):
     # Omitted: keep the previous version's publish title/body.
     publish_title: str | None = Field(default=None, max_length=80)
     publish_body: str | None = Field(default=None, max_length=2000)
-    sentences: list[DraftSentence | StructureDraftLine] = Field(
+    # A brief-mode draft (第三轮) has plain lines: text + fact_ids only.
+    sentences: list[DraftSentence | StructureDraftLine | SpokenDraftLine] = Field(
         min_length=1, max_length=100
     )
 

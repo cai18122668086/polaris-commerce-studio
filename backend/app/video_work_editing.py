@@ -34,6 +34,7 @@ from .config import Settings
 from .errors import ApiError
 from .models import WorkspaceCreditAccountRecord
 from .services import credit_enforcement_enabled
+from .video_dispatch_lock import DispatchLock
 from .video_editing_contracts import (
     EditingOptions,
     EditingPlanningTaskCreate,
@@ -453,7 +454,23 @@ def _active_count(session: Session, user_id: str) -> int:
 def dispatch(
     session: Session, settings: Settings, workspace: WorkspaceContext, batch_id: str
 ) -> None:
-    """Advance the batch's active runs, then start waiting ones while slots last."""
+    """Advance the batch's active runs, then start waiting ones while slots last.
+
+    The page poll, submit, retry and the sweeper all call this: one caller per
+    user at a time, so the slot count and each next step are decided once.
+    """
+    lock = DispatchLock(session, "editing", workspace.principal.user_id)
+    if not lock.acquire():
+        return  # Another request is advancing this user's runs right now.
+    try:
+        _dispatch(session, settings, workspace, batch_id)
+    finally:
+        lock.release()
+
+
+def _dispatch(
+    session: Session, settings: Settings, workspace: WorkspaceContext, batch_id: str
+) -> None:
     runs = {
         run.item_id: run
         for run in session.scalars(

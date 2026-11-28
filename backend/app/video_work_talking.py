@@ -17,7 +17,7 @@ from typing import Any, cast
 from uuid import UUID, uuid5
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Request
-from sqlalchemy import func, or_, select, text, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -33,6 +33,7 @@ from .domain import MembershipRole, MembershipStatus
 from .errors import ApiError
 from .models import WorkspaceCreditAccountRecord, WorkspaceMemberRecord, utc_now
 from .services import credit_enforcement_enabled
+from .video_dispatch_lock import DispatchLock
 from .video_generation import (
     ACTIVE_VIDEO_STATUSES,
     GenerationRequest,
@@ -260,7 +261,7 @@ def dispatch(
     provider: ProviderFactory,
 ) -> list[str]:
     """Start waiting items while the user has free slots; returns new task ids."""
-    lock = _DispatchLock(session, workspace.principal.user_id)
+    lock = DispatchLock(session, "talking", workspace.principal.user_id)
     if not lock.acquire():
         return []  # Another request is dispatching this user's items right now.
     try:
@@ -323,39 +324,6 @@ def dispatch(
         return started
     finally:
         lock.release()
-
-
-class _DispatchLock:
-    """Per-user session lock on its own connection (create_generation commits)."""
-
-    def __init__(self, session: Session, user_id: str) -> None:
-        self.bind = session.get_bind()
-        self.key = f"polaris:video-talking-dispatch:{user_id}"
-        self.connection: Any = None
-
-    def acquire(self) -> bool:
-        if self.bind.dialect.name != "postgresql":
-            return True
-        self.connection = self.bind.connect()  # type: ignore[union-attr]
-        got = self.connection.execute(
-            text("SELECT pg_try_advisory_lock(hashtext(:key))"), {"key": self.key}
-        ).scalar()
-        if not got:
-            self.connection.close()
-            self.connection = None
-        return bool(got)
-
-    def release(self) -> None:
-        if self.connection is None:
-            return
-        try:
-            self.connection.execute(
-                text("SELECT pg_advisory_unlock(hashtext(:key))"), {"key": self.key}
-            )
-            self.connection.commit()
-        finally:
-            self.connection.close()
-            self.connection = None
 
 
 def _own_batch(

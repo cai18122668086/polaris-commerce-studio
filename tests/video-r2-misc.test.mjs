@@ -40,7 +40,7 @@ test("查询结果走 /check，绝不对待确认任务调 /resume", () => {
   assert.match(check, /generation-tasks\/\{job_id\}\/check/);
   assert.doesNotMatch(check, /\/resume`, \{/);
   const studio = readFileSync(new URL("../components/video-studio/video-studio.tsx", import.meta.url), "utf8");
-  assert.match(studio, /canCheckAvatarJob\(job\)\) : undefined; return pending \? <AvatarCheckButton/);
+  assert.match(studio, /canCheckAvatarJob\(job\)\) : undefined;[^]*?return pending \? <AvatarCheckButton/);
   const drawer = readFileSync(new URL("../components/video-studio/avatar-create-drawer.tsx", import.meta.url), "utf8");
   assert.match(drawer, /phase === "pending_check" && job && <div className=\{styles.checkRow\}><AvatarCheckButton jobId=\{job.id\} check=\{library.checkResult\}/);
 });
@@ -99,4 +99,18 @@ test("声音库克隆入口：未开通时置灰、写明暂未开通、点了�
   const mine = readFileSync(new URL("../components/video-studio/voice-cloning.tsx", import.meta.url), "utf8");
   assert.match(mine, /onClick=\{\(\) => \{ if \(entry\.available\) onClone\(\); \}\}/);
   assert.match(mine, /克隆我的声音（暂未开通）/);
+});
+
+test("C8 停止核对：形象任务显示失败说明、已退回积分，给「重新定制」", () => {
+  const job = { status: "failed", error_code: "VIDEO_PROVIDER_OUTCOME_EXPIRED" };
+  assert.equal(rules.avatarPhase(job), "expired");
+  assert.equal(rules.avatarPhase({ status: "failed", error_code: "OTHER" }), "failed");
+  assert.equal(rules.ownAvatarStatus({ ready: false }, job).label, "已停止核对");
+  assert.equal(rules.AVATAR_PHASE_COPY.expired.detail, "这条长时间没能确认结果，已停止核对，积分已退回。如果供应商那边其实已生成，请联系客服。");
+  assert.equal(rules.isOutcomeExpired(job), true);
+  assert.equal(rules.isOutcomeExpired({ status: "unknown" }), false);
+  const drawer = readFileSync(new URL("../components/video-studio/avatar-create-drawer.tsx", import.meta.url), "utf8");
+  assert.match(drawer, /phase === "expired" && <button type="button" className=\{base\.primaryButton\} onClick=\{reset\}>重新定制<\/button>/);
+  const studio = readFileSync(new URL("../components/video-studio/video-studio.tsx", import.meta.url), "utf8");
+  assert.match(studio, /notify\(AVATAR_PHASE_COPY\.expired\.detail\); setLibraryDrawer\("avatar"\);/);
 });

@@ -44,6 +44,10 @@ export function AvatarCreateDrawer({ open, onClose, workspaceId, userId, library
   const [polishTouched, setPolishTouched] = useState(false);
   const [chosen, setChosen] = useState("original");
   const polishError = polishDescriptionError(polishText);
+  const candidatesRef = useRef<HTMLDivElement>(null);
+  const candidateCount = polish.candidates.length;
+  // 候选一出来就滚到候选区，免得用户在长表单里找不到结果
+  useEffect(() => { if (candidateCount) candidatesRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" }); }, [candidateCount]);
   const polishCost = credits.note(["avatar_polish"]);
   const polishTotal = polishCost.credits === null ? null : polishCost.credits * 2;
   const chosenCandidate = polish.candidates.find(item => item.id === chosen && item.status === "ready");
@@ -142,7 +146,7 @@ export function AvatarCreateDrawer({ open, onClose, workspaceId, userId, library
           </div>
           {!consent && file && <p className={styles.hint}>先勾选上面的授权确认，再生成候选。</p>}
           {polish.error && <p className={styles.error} role="alert">{polish.error}</p>}
-          {(polish.candidates.length > 0 || polish.busy) && <div className={styles.candidates} role="radiogroup" aria-label="选择用于创建形象的照片">
+          {(polish.candidates.length > 0 || polish.busy) && <div ref={candidatesRef} className={styles.candidates} role="radiogroup" aria-label="选择用于创建形象的照片">
             <button type="button" role="radio" aria-checked={chosen === "original"} className={styles.candidate} disabled={attempted} onClick={() => setChosen("original")}>
               <span>{preview && <img src={preview} alt="原图" />}</span><b>原图</b>
             </button>

@@ -248,3 +248,56 @@ def test_spec_check_rules(monkeypatch):
         video_avatar_polish, "detect_face", lambda image: ((560, 400, 620, 460), 0.9)
     )
     assert spec_check(portrait_image)[0] is False  # 脸太小
+
+
+def test_http_client_fails_over_on_502_but_not_on_rejection(monkeypatch):
+    import base64 as b64
+
+    import httpx
+    from pydantic import SecretStr
+
+    from app.config import Settings
+    from app.video_avatar_polish import HttpPolishImageClient
+
+    settings = Settings().model_copy(
+        update={
+            "image_base_url": "https://primary.invalid",
+            "image_api_key": SecretStr("p"),
+            "provider_failover_enabled": True,
+            "provider_failover_base_url": "https://backup.invalid",
+            "provider_failover_api_key": SecretStr("b1, b2"),
+        }
+    )
+    buffer = io.BytesIO()
+    Image.new("RGB", (1200, 1600)).save(buffer, "PNG")
+    ok = {"data": [{"b64_json": b64.b64encode(buffer.getvalue()).decode()}]}
+    seen = []
+
+    def post(url, headers, **kwargs):
+        seen.append((url, headers["Authorization"]))
+        if "primary" in url:
+            return httpx.Response(502, text="bad gateway")
+        if headers["Authorization"] == "Bearer b1":
+            return httpx.Response(429, text="busy")
+        return httpx.Response(200, json=ok)
+
+    monkeypatch.setattr(httpx, "post", post)
+    client = HttpPolishImageClient(settings)
+    result = client.edit(b"png", "prompt", idempotency_key="k")
+    assert result.image.size == (1200, 1600)
+    assert [auth for _, auth in seen] == ["Bearer p", "Bearer b1", "Bearer b2"]
+    assert result.model_requested.startswith("failover-2:")
+
+    seen.clear()
+    monkeypatch.setattr(
+        httpx,
+        "post",
+        lambda url, headers, **kw: (
+            seen.append(url)
+            or httpx.Response(400, json={"error": {"code": "moderation_blocked"}})
+        ),
+    )
+    with pytest.raises(PolishImageError) as caught:
+        HttpPolishImageClient(settings).edit(b"png", "prompt", idempotency_key="k")
+    assert caught.value.code == "AVATAR_POLISH_UNSAFE"
+    assert len(seen) == 1  # 被拒不换通道重试

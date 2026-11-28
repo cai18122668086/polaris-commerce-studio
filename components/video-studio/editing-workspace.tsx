@@ -328,13 +328,11 @@ export function EditingWorkspace({ workspaceId, projectId, saved, jobs, compact 
     } catch { setError("操作暂未确认，请刷新任务后重试。"); }
     finally { setBusy(false); }
   };
-  // 精修后的最终版写回作品条目（契约 C2：editing_task_id 归剪辑），成片页就用这一版。
+  // 精修后的最终版写回作品条目：由服务端 adopt-editing 写 editing_task_id 和阶段（B9，PATCH 不再接受阶段字段），成片页就用这一版。
   const adoptForWorkItem = async (taskId: string) => {
     const path = { workspace_id: workspaceId, item_id: workItemId as string };
     for (let attempt = 0; attempt < 2; attempt += 1) {
-      const item = unwrapApiResponse(await apiClient.GET(`${root}/work-items/{item_id}`, { ...options(), params: { path } }));
-      if (item.editing_task_id === taskId) return;
-      const result = await apiClient.PATCH(`${root}/work-items/{item_id}`, { ...options(), params: { path }, body: { expected_version: item.version, editing_task_id: taskId, ...(item.stage === "editing" ? { stage: "finishing" as const, status: "pending" as const } : {}) } });
+      const result = await apiClient.POST(`${root}/work-items/{item_id}/adopt-editing`, { ...options(), params: { path }, body: { editing_task_id: taskId } });
       if (!result.error) return;
     }
     setError("高清已生成，但没能同步到这一批的作品里，请回到批次结果刷新。");

@@ -122,13 +122,12 @@ class WorkBatchCreate(StrictVideoModel):
         return self
 
 
-class WorkItemPatch(WorkItemFields):
-    """Partial update; only fields that are sent are written.
+class WorkItemUpdate(WorkItemFields):
+    """Server-side partial update (stage code only, never a request body).
 
-    Ownership by line (not enforced by the server): W2 writes persona/avatar/
-    voice/audio/generation_task_id; W3 writes source_video_ref/editing_task_id;
-    W5 writes cover_asset_id and the final publish_title/publish_body. Each line
-    moves ``stage``/``status``/``error`` while the item is in its stage.
+    Talking, editing and finishing write their task ids, ``stage``, ``status``
+    and ``error`` through this; the public ``PATCH`` accepts only
+    ``WorkItemPatch`` (content fields), see B9.
     """
 
     expected_version: int = Field(ge=1)
@@ -146,7 +145,7 @@ class WorkItemPatch(WorkItemFields):
     published: bool | None = None
 
     @model_validator(mode="after")
-    def not_empty(self) -> WorkItemPatch:
+    def not_empty(self) -> WorkItemUpdate:
         if not (self.model_fields_set - {"expected_version"}):
             raise ValueError("没有要更新的字段。")
         for name in (
@@ -160,6 +159,53 @@ class WorkItemPatch(WorkItemFields):
             if name in self.model_fields_set and getattr(self, name) is None:
                 raise ValueError(f"{name} 不能为空。")
         return self
+
+
+class WorkItemPatch(StrictVideoModel):
+    """Public partial update: content only (B9).
+
+    Stage, status, error and task ids are written by the server's stage code
+    (talking, editing, ``adopt-editing``, ``finish``), never by a request body,
+    so a stale tab or a replayed request cannot move an item between stages.
+    """
+
+    expected_version: int = Field(ge=1)
+    script_document_id: str | None = Field(default=None, max_length=40)
+    publish_title: str | None = Field(default=None, max_length=80)
+    publish_body: str | None = Field(default=None, max_length=2000)
+    script_text: str | None = Field(default=None, max_length=3000)
+    persona_id: str | None = Field(default=None, max_length=80)
+    avatar_id: str | None = Field(default=None, max_length=80)
+    voice_id: str | None = Field(default=None, max_length=80)
+    audio_file_id: str | None = Field(default=None, max_length=40)
+    # C10：商家自己的「已发布」标记。
+    # true 记下当前时间（已标记的保持原时间），false 清除。
+    published: bool | None = None
+
+    _strip_text = field_validator(
+        "publish_title",
+        "publish_body",
+        "script_text",
+        "script_document_id",
+        "persona_id",
+        "avatar_id",
+        "voice_id",
+        "audio_file_id",
+        mode="before",
+    )(_strip)
+
+    @model_validator(mode="after")
+    def not_empty(self) -> WorkItemPatch:
+        if not (self.model_fields_set - {"expected_version"}):
+            raise ValueError("没有要更新的字段。")
+        for name in ("publish_title", "publish_body", "script_text", "published"):
+            if name in self.model_fields_set and getattr(self, name) is None:
+                raise ValueError(f"{name} 不能为空。")
+        return self
+
+
+class AdoptEditingRequest(StrictVideoModel):
+    editing_task_id: str = Field(min_length=1, max_length=40)
 
 
 class WorkItemResponse(StrictVideoModel):
@@ -307,6 +353,42 @@ def _check_refs(
         )
 
 
+def require_sources_not_owned(
+    session: Session,
+    owner: tuple[str, str],
+    batch_id: str | None,
+    items: list[dict[str, Any]],
+) -> None:
+    """A talking result is edited as its own work item, never a copy (B9).
+
+    Its title, body and script live on the talking batch's item; a second item
+    in a direct-editing batch would lose them in finishing and works. Checked
+    when the batch is created and again when editing is submitted.
+    """
+    generations = [
+        str((fields.get("source_video_ref") or {}).get("id"))
+        for fields in items
+        if (fields.get("source_video_ref") or {}).get("kind") in {"library", "talking"}
+    ]
+    if not generations:
+        return
+    found = session.scalar(
+        select(VideoWorkItemRecord).where(
+            VideoWorkItemRecord.workspace_id == owner[0],
+            VideoWorkItemRecord.owner_user_id == owner[1],
+            *((VideoWorkItemRecord.batch_id != batch_id,) if batch_id else ()),
+            VideoWorkItemRecord.generation_task_id.in_(generations),
+        )
+    )
+    if found is not None:
+        raise ApiError(
+            409,
+            "VIDEO_WORK_SOURCE_HAS_ITEM",
+            "这条口播属于一个口播批次，请从那一批进入剪辑，标题和正文才不会丢。",
+            {"batch_id": found.batch_id, "item_id": found.id},
+        )
+
+
 def _existing_batch(
     session: Session, owner: tuple[str, str], request_id: str, fingerprint: str
 ) -> WorkBatchResponse | None:
@@ -340,6 +422,8 @@ def create_batch(
     items = [item.model_dump(mode="json") for item in body.items]
     for fields in items:
         _check_refs(session, owner, fields)
+    if body.source == "editing_upload":
+        require_sources_not_owned(session, owner, None, items)
     stage = "editing" if body.source == "editing_upload" else "talking"
     # One timestamp for the batch and its items keeps newest-first lists in order.
     now = utc_now()
@@ -602,6 +686,18 @@ def patch_item(
     workspace: VideoWorkspace,
     session: SessionDependency,
 ) -> WorkItemResponse:
+    """Edit an item's content (title, body, script, presenter, voice, audio)."""
+    fields = body.model_dump(exclude_unset=True)
+    return update_item(item_id, WorkItemUpdate(**fields), workspace, session)
+
+
+def update_item(
+    item_id: str,
+    body: WorkItemUpdate,
+    workspace: WorkspaceContext,
+    session: Session,
+) -> WorkItemResponse:
+    """Versioned update shared by PATCH and the stage endpoints."""
     require_workspace_write(workspace)
     row = _owned_item(session, workspace, item_id)
     if row.deleted_at is not None:
@@ -651,6 +747,63 @@ def patch_item(
     session.commit()
     session.refresh(row)
     return item_response(row)
+
+
+@router.post("/work-items/{item_id}/adopt-editing", response_model=WorkItemResponse)
+def adopt_editing(
+    item_id: str,
+    body: AdoptEditingRequest,
+    workspace: VideoWorkspace,
+    session: SessionDependency,
+) -> WorkItemResponse:
+    """Use a finished editing task (e.g. 精修这一条) as this item's video.
+
+    Idempotent. The replaced task id goes to ``history["editing"]`` and
+    ``history["video_updated"]`` records when the video changed (the finishing
+    page offers a new cover then). An item still in editing moves on to
+    finishing (待成片).
+    """
+    require_workspace_write(workspace)
+    owner = _owner(workspace)
+    for _ in range(3):
+        row = _owned_item(session, workspace, item_id)
+        if row.deleted_at is not None:
+            raise ApiError(404, *NOT_FOUND)
+        if row.editing_task_id == body.editing_task_id:
+            return item_response(row)
+        task = session.get(EditingTaskRecord, body.editing_task_id)
+        if task is None or (task.workspace_id, task.owner_user_id) != owner:
+            raise ApiError(
+                422, "VIDEO_WORK_REFERENCE_INVALID", "剪辑任务不存在或无权使用。"
+            )
+        if task.status != "completed":
+            raise ApiError(409, "VIDEO_WORK_EDITING_NOT_DONE", "这一版还没有剪好。")
+        changes: dict[str, Any] = {"editing_task_id": task.id}
+        history = {key: list(value) for key, value in (row.history or {}).items()}
+        if row.editing_task_id:
+            history.setdefault("editing", []).append(row.editing_task_id)
+            history["video_updated"] = [utc_now().isoformat()]
+        changes["history"] = history
+        if row.stage == "editing":
+            changes.update(stage="finishing", status="pending", error=None)
+        result = session.execute(
+            update(VideoWorkItemRecord)
+            .where(
+                VideoWorkItemRecord.id == row.id,
+                VideoWorkItemRecord.version == row.version,
+            )
+            .values(**changes, version=row.version + 1, updated_at=utc_now())
+            .execution_options(synchronize_session=False)
+        )
+        if cast(CursorResult, result).rowcount == 1:
+            session.commit()
+            session.refresh(row)
+            return item_response(row)
+        session.rollback()  # Someone else updated it: read again and retry.
+        session.expire_all()
+    raise ApiError(
+        409, "VIDEO_WORK_ITEM_CONFLICT", "这条作品已在别处更新，请刷新后再试。"
+    )
 
 
 def item_busy(session: Session, row: VideoWorkItemRecord) -> bool:

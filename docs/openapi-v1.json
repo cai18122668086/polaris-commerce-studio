@@ -174,6 +174,22 @@
         "title": "AdminUpdateRequest",
         "type": "object"
       },
+      "AdoptEditingRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "editing_task_id": {
+            "maxLength": 40,
+            "minLength": 1,
+            "title": "Editing Task Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "editing_task_id"
+        ],
+        "title": "AdoptEditingRequest",
+        "type": "object"
+      },
       "AiEstimateBody": {
         "additionalProperties": false,
         "properties": {
@@ -16738,7 +16754,7 @@
       },
       "WorkItemPatch": {
         "additionalProperties": false,
-        "description": "Partial update; only fields that are sent are written.\n\nOwnership by line (not enforced by the server): W2 writes persona/avatar/\nvoice/audio/generation_task_id; W3 writes source_video_ref/editing_task_id;\nW5 writes cover_asset_id and the final publish_title/publish_body. Each line\nmoves ``stage``/``status``/``error`` while the item is in its stage.",
+        "description": "Public partial update: content only (B9).\n\nStage, status, error and task ids are written by the server's stage code\n(talking, editing, ``adopt-editing``, ``finish``), never by a request body,\nso a stale tab or a replayed request cannot move an item between stages.",
         "properties": {
           "audio_file_id": {
             "anyOf": [
@@ -16764,58 +16780,10 @@
             ],
             "title": "Avatar Id"
           },
-          "cover_asset_id": {
-            "anyOf": [
-              {
-                "maxLength": 80,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cover Asset Id"
-          },
-          "editing_task_id": {
-            "anyOf": [
-              {
-                "maxLength": 40,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Editing Task Id"
-          },
-          "error": {
-            "anyOf": [
-              {
-                "maxLength": 500,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
           "expected_version": {
             "minimum": 1.0,
             "title": "Expected Version",
             "type": "integer"
-          },
-          "generation_task_id": {
-            "anyOf": [
-              {
-                "maxLength": 40,
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Generation Task Id"
           },
           "persona_id": {
             "anyOf": [
@@ -16887,52 +16855,6 @@
               }
             ],
             "title": "Script Text"
-          },
-          "source_video_ref": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SourceVideoRef"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "stage": {
-            "anyOf": [
-              {
-                "enum": [
-                  "talking",
-                  "editing",
-                  "finishing",
-                  "done"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Stage"
-          },
-          "status": {
-            "anyOf": [
-              {
-                "enum": [
-                  "pending",
-                  "queued",
-                  "running",
-                  "succeeded",
-                  "failed",
-                  "canceled"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status"
           },
           "voice_id": {
             "anyOf": [
@@ -29760,6 +29682,66 @@
         ]
       }
     },
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/check": {
+      "post": {
+        "description": "查询结果 for any generation task (e.g. an avatar motion in the library).\n\nSame rules as ``talking-check``: a task whose run was lost continues and\nonly queries the provider; an unknown outcome without a provider id stays\n结果待确认 with ``notice``. Never re-submits, never charges again.",
+        "operationId": "check_generation_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__check_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "job_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Job Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Check Generation Api V1 Video Studio Workspaces  Workspace Id  Generation Tasks  Job Id  Check Post",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Check Generation",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
     "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/editing-handoffs": {
       "post": {
         "operationId": "create_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs_post",
@@ -33980,6 +33962,7 @@
         ]
       },
       "patch": {
+        "description": "Edit an item's content (title, body, script, presenter, voice, audio).",
         "operationId": "patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch",
         "parameters": [
           {
@@ -34039,6 +34022,73 @@
           }
         ],
         "summary": "Patch Item",
+        "tags": [
+          "video-work"
+        ]
+      }
+    },
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/adopt-editing": {
+      "post": {
+        "description": "Use a finished editing task (e.g. 精修这一条) as this item's video.\n\nIdempotent. The replaced task id goes to ``history[\"editing\"]`` and\n``history[\"video_updated\"]`` records when the video changed (the finishing\npage offers a new cover then). An item still in editing moves on to\nfinishing (待成片).",
+        "operationId": "adopt_editing_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__adopt_editing_post",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "item_id",
+            "required": true,
+            "schema": {
+              "title": "Item Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "workspace_id",
+            "required": true,
+            "schema": {
+              "title": "Workspace Id",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdoptEditingRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkItemResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "SuperTokensSession": []
+          }
+        ],
+        "summary": "Adopt Editing",
         "tags": [
           "video-work"
         ]

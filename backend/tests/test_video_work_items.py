@@ -11,11 +11,15 @@ from alembic.operations import Operations
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from app.auth import Principal, WorkspaceContext
+from app.domain import MembershipRole
+from app.errors import ApiError
 from app.main import create_app
 from app.models import WorkspaceMemberRecord, WorkspaceRecord
 from app.video_generation_models import VideoAvatarRecord, VideoGenerationRecord
 from app.video_work_editing_models import VideoWorkEditingRunRecord
 from app.video_work_models import VideoWorkBatchRecord, VideoWorkItemRecord
+from app.video_work_routes import WorkItemUpdate, update_item
 from tests.test_auth_external import (
     FakeExternalAuthBackend,
     external_settings,
@@ -62,6 +66,19 @@ def create(client, ws, body):
 
 def patch(client, ws, item_id, **fields):
     return client.patch(base(ws) + f"/work-items/{item_id}", json=fields)
+
+
+def server_set(client, ws, user, item_id, **values):
+    """What the stage code writes (B9: no longer accepted from PATCH)."""
+    workspace = WorkspaceContext(Principal(user_id=user), ws, MembershipRole.OWNER)
+    with client.app.state.session_factory() as session:
+        row = session.get(VideoWorkItemRecord, item_id)
+        return update_item(
+            item_id,
+            WorkItemUpdate(expected_version=row.version, **values),
+            workspace,
+            session,
+        ).model_dump(mode="json")
 
 
 def generation(client, ws, user, task_id=None):
@@ -150,17 +167,20 @@ def test_other_user_and_other_workspace_cannot_see_or_write(video):
     assert client.get(base(ws) + f"/work-batches/{batch['id']}").status_code == 404
     assert client.get(base(ws) + f"/work-items/{item_id}").status_code == 404
     assert (
-        patch(client, ws, item_id, expected_version=1, status="queued").status_code
+        patch(client, ws, item_id, expected_version=1, publish_title="改").status_code
         == 404
     )
-    # Another user's generation task can't be attached to my item either.
+    # Another user's generation task can't be attached to my item either: the
+    # field is not writable at all (B9), and the stage code checks ownership.
     foreign_task = generation(client, ws, other)
     auth.identity = verified_identity(email=EMAIL)
     refused = patch(
         client, ws, item_id, expected_version=1, generation_task_id=foreign_task
     )
     assert refused.status_code == 422
-    assert refused.json()["error"]["code"] == "VIDEO_WORK_REFERENCE_INVALID"
+    with pytest.raises(ApiError) as caught:
+        server_set(client, ws, user, item_id, generation_task_id=foreign_task)
+    assert caught.value.code == "VIDEO_WORK_REFERENCE_INVALID"
 
     ws2 = "ws_video_work_other"
     with client.app.state.session_factory() as session:
@@ -187,7 +207,7 @@ def test_other_user_and_other_workspace_cannot_see_or_write(video):
         == 403
     )
     assert (
-        patch(client, ws, item_id, expected_version=1, status="queued").status_code
+        patch(client, ws, item_id, expected_version=1, publish_title="改").status_code
         == 403
     )
 
@@ -195,31 +215,21 @@ def test_other_user_and_other_workspace_cannot_see_or_write(video):
 def test_patch_uses_versions_and_retried_patch_is_answered(video):
     client, _, ws, user, _ = video
     item_id = create(client, ws, batch_body(item()))["item_ids"][0]
-    task = generation(client, ws, user)
     first = patch(
-        client,
-        ws,
-        item_id,
-        expected_version=1,
-        generation_task_id=task,
-        status="queued",
+        client, ws, item_id, expected_version=1, publish_title="新标题", avatar_id="a2"
     )
     assert first.status_code == 200, first.text
     assert first.json()["version"] == 2
     # Same request again (lost response): answered with the current row.
     again = patch(
-        client,
-        ws,
-        item_id,
-        expected_version=1,
-        generation_task_id=task,
-        status="queued",
+        client, ws, item_id, expected_version=1, publish_title="新标题", avatar_id="a2"
     )
     assert again.status_code == 200 and again.json()["version"] == 2
-    stale = patch(client, ws, item_id, expected_version=1, status="running")
+    stale = patch(client, ws, item_id, expected_version=1, publish_title="旧标题")
     assert stale.status_code == 409
     assert stale.json()["error"]["code"] == "VIDEO_WORK_ITEM_CONFLICT"
-    assert client.get(base(ws) + f"/work-items/{item_id}").json()["status"] == "queued"
+    current = client.get(base(ws) + f"/work-items/{item_id}").json()
+    assert current["publish_title"] == "新标题"
 
 
 def test_failed_item_retries_alone_and_keeps_history(video):
@@ -227,39 +237,18 @@ def test_failed_item_retries_alone_and_keeps_history(video):
     batch = create(client, ws, batch_body(item("稿一"), item("稿二")))
     first_id, second_id = batch["item_ids"]
     old_task, ok_task = generation(client, ws, user), generation(client, ws, user)
-    patch(
-        client,
-        ws,
-        first_id,
-        expected_version=1,
-        generation_task_id=old_task,
-        status="queued",
+    server_set(client, ws, user, first_id, generation_task_id=old_task, status="queued")
+    server_set(client, ws, user, second_id, generation_task_id=ok_task, status="queued")
+    failed = server_set(
+        client, ws, user, first_id, status="failed", error="口型合成失败"
     )
-    patch(
-        client,
-        ws,
-        second_id,
-        expected_version=1,
-        generation_task_id=ok_task,
-        status="queued",
-    )
-    failed = patch(
-        client, ws, first_id, expected_version=2, status="failed", error="口型合成失败"
-    )
-    assert failed.json()["error"] == "口型合成失败"
-    done = patch(client, ws, second_id, expected_version=2, status="succeeded")
-    assert done.json()["status"] == "succeeded"
+    assert failed["error"] == "口型合成失败"
+    done = server_set(client, ws, user, second_id, status="succeeded")
+    assert done["status"] == "succeeded"
     new_task = generation(client, ws, user)
-    retried = patch(
-        client,
-        ws,
-        first_id,
-        expected_version=3,
-        generation_task_id=new_task,
-        status="queued",
+    body = server_set(
+        client, ws, user, first_id, generation_task_id=new_task, status="queued"
     )
-    assert retried.status_code == 200, retried.text
-    body = retried.json()
     assert body["generation_task_id"] == new_task
     assert body["history"] == {"generation": [old_task]}
     assert body["error"] is None and body["status"] == "queued"
@@ -269,13 +258,11 @@ def test_failed_item_retries_alone_and_keeps_history(video):
 
 
 def test_list_filters_by_batch_stage_status_and_ids(video):
-    client, _, ws, _, _ = video
+    client, _, ws, user, _ = video
     first = create(client, ws, batch_body(item("甲"), item("乙")))
     second = create(client, ws, batch_body(item("丙")))
-    moved = patch(
-        client, ws, first["item_ids"][1], expected_version=1, stage="finishing"
-    )
-    assert moved.status_code == 200
+    moved = server_set(client, ws, user, first["item_ids"][1], stage="finishing")
+    assert moved["stage"] == "finishing"
     by_batch = client.get(
         base(ws) + "/work-items", params={"batch_id": first["id"]}
     ).json()

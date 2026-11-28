@@ -61,7 +61,12 @@ from .video_studio_routes import VideoWorkspace
 from .video_studio_schemas import StrictVideoModel
 from .video_work_editing_models import ACTIVE_PHASES, VideoWorkEditingRunRecord
 from .video_work_models import VideoWorkBatchRecord, VideoWorkItemRecord
-from .video_work_routes import WorkBatchResponse, batch_items, batch_response
+from .video_work_routes import (
+    WorkBatchResponse,
+    batch_items,
+    batch_response,
+    require_sources_not_owned,
+)
 from .video_work_talking import _workspace_for, _write
 
 logger = logging.getLogger(__name__)
@@ -685,33 +690,13 @@ def _require_own_talking_items(
     batch_id: str,
     items: list[VideoWorkItemRecord],
 ) -> None:
-    """A talking result must be edited as its own work item, never a copy.
-
-    Its title, body and script live on the talking batch's item; editing it in
-    a separate direct-editing batch would lose them in finishing and works.
-    """
-    generations = [
-        str((item.source_video_ref or {}).get("id"))
-        for item in items
-        if (item.source_video_ref or {}).get("kind") in {"library", "talking"}
-    ]
-    if not generations:
-        return
-    owner = session.scalar(
-        select(VideoWorkItemRecord).where(
-            VideoWorkItemRecord.workspace_id == workspace.workspace_id,
-            VideoWorkItemRecord.owner_user_id == workspace.principal.user_id,
-            VideoWorkItemRecord.batch_id != batch_id,
-            VideoWorkItemRecord.generation_task_id.in_(generations),
-        )
+    """A talking result must be edited as its own work item, never a copy."""
+    require_sources_not_owned(
+        session,
+        (workspace.workspace_id, workspace.principal.user_id),
+        batch_id,
+        [{"source_video_ref": item.source_video_ref} for item in items],
     )
-    if owner is not None:
-        raise ApiError(
-            409,
-            "VIDEO_WORK_SOURCE_HAS_ITEM",
-            "这条口播属于一个口播批次，请从那一批进入剪辑，标题和正文才不会丢。",
-            {"batch_id": owner.batch_id, "item_id": owner.id},
-        )
 
 
 # --------------------------------------------------------------------------- routes

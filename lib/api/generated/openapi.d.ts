@@ -2813,6 +2813,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check Generation
+         * @description 查询结果 for any generation task (e.g. an avatar motion in the library).
+         *
+         *     Same rules as ``talking-check``: a task whose run was lost continues and
+         *     only queries the provider; an unknown outcome without a provider id stays
+         *     结果待确认 with ``notice``. Never re-submits, never charges again.
+         */
+        post: operations["check_generation_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__check_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/video-studio/workspaces/{workspace_id}/generation-tasks/{job_id}/editing-handoffs": {
         parameters: {
             query?: never;
@@ -3668,8 +3692,36 @@ export interface paths {
         delete: operations["delete_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__delete"];
         options?: never;
         head?: never;
-        /** Patch Item */
+        /**
+         * Patch Item
+         * @description Edit an item's content (title, body, script, presenter, voice, audio).
+         */
         patch: operations["patch_item_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__patch"];
+        trace?: never;
+    };
+    "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/adopt-editing": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Adopt Editing
+         * @description Use a finished editing task (e.g. 精修这一条) as this item's video.
+         *
+         *     Idempotent. The replaced task id goes to ``history["editing"]`` and
+         *     ``history["video_updated"]`` records when the video changed (the finishing
+         *     page offers a new cover then). An item still in editing moves on to
+         *     finishing (待成片).
+         */
+        post: operations["adopt_editing_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__adopt_editing_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/api/v1/video-studio/workspaces/{workspace_id}/work-items/{item_id}/editing-retry": {
@@ -5202,6 +5254,11 @@ export interface components {
             role?: ("admin" | "super_admin") | null;
             /** Status */
             status?: ("active" | "disabled") | null;
+        };
+        /** AdoptEditingRequest */
+        AdoptEditingRequest: {
+            /** Editing Task Id */
+            editing_task_id: string;
         };
         /** AiEstimateBody */
         AiEstimateBody: {
@@ -11251,28 +11308,19 @@ export interface components {
         };
         /**
          * WorkItemPatch
-         * @description Partial update; only fields that are sent are written.
+         * @description Public partial update: content only (B9).
          *
-         *     Ownership by line (not enforced by the server): W2 writes persona/avatar/
-         *     voice/audio/generation_task_id; W3 writes source_video_ref/editing_task_id;
-         *     W5 writes cover_asset_id and the final publish_title/publish_body. Each line
-         *     moves ``stage``/``status``/``error`` while the item is in its stage.
+         *     Stage, status, error and task ids are written by the server's stage code
+         *     (talking, editing, ``adopt-editing``, ``finish``), never by a request body,
+         *     so a stale tab or a replayed request cannot move an item between stages.
          */
         WorkItemPatch: {
             /** Audio File Id */
             audio_file_id?: string | null;
             /** Avatar Id */
             avatar_id?: string | null;
-            /** Cover Asset Id */
-            cover_asset_id?: string | null;
-            /** Editing Task Id */
-            editing_task_id?: string | null;
-            /** Error */
-            error?: string | null;
             /** Expected Version */
             expected_version: number;
-            /** Generation Task Id */
-            generation_task_id?: string | null;
             /** Persona Id */
             persona_id?: string | null;
             /** Publish Body */
@@ -11285,11 +11333,6 @@ export interface components {
             script_document_id?: string | null;
             /** Script Text */
             script_text?: string | null;
-            source_video_ref?: components["schemas"]["SourceVideoRef"] | null;
-            /** Stage */
-            stage?: ("talking" | "editing" | "finishing" | "done") | null;
-            /** Status */
-            status?: ("pending" | "queued" | "running" | "succeeded" | "failed" | "canceled") | null;
             /** Voice Id */
             voice_id?: string | null;
         };
@@ -17833,6 +17876,40 @@ export interface operations {
             };
         };
     };
+    check_generation_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__check_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                job_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        [key: string]: unknown;
+                    };
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     create_handoff_api_v1_video_studio_workspaces__workspace_id__generation_tasks__job_id__editing_handoffs_post: {
         parameters: {
             query?: never;
@@ -19980,6 +20057,42 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["WorkItemPatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkItemResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    adopt_editing_api_v1_video_studio_workspaces__workspace_id__work_items__item_id__adopt_editing_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                item_id: string;
+                workspace_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AdoptEditingRequest"];
             };
         };
         responses: {

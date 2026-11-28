@@ -178,17 +178,27 @@ def work_item(client, ws, generation_id) -> dict:
     batch = client.post(base(ws) + "/work-batches", json=body)
     assert batch.status_code == 200, batch.text
     item = batch.json()["items"][0]
-    patched = client.patch(
-        base(ws) + f"/work-items/{item['id']}",
-        json={
-            "expected_version": item["version"],
-            "generation_task_id": generation_id,
-            "stage": "finishing",
-            "status": "pending",
-        },
-    )
-    assert patched.status_code == 200, patched.text
-    return patched.json()
+    # The stage code links the talking result (B9: not writable through PATCH).
+    from app.auth import Principal, WorkspaceContext
+    from app.domain import MembershipRole
+    from app.video_work_models import VideoWorkItemRecord
+    from app.video_work_routes import WorkItemUpdate, update_item
+
+    with client.app.state.session_factory() as session:
+        owner = session.get(VideoWorkItemRecord, item["id"]).owner_user_id
+        workspace = WorkspaceContext(Principal(user_id=owner), ws, MembershipRole.OWNER)
+        patched = update_item(
+            item["id"],
+            WorkItemUpdate(
+                expected_version=item["version"],
+                generation_task_id=generation_id,
+                stage="finishing",
+                status="pending",
+            ),
+            workspace,
+            session,
+        )
+    return patched.model_dump(mode="json")
 
 
 def generate(client, ws, **body):

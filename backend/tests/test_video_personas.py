@@ -36,7 +36,7 @@ def test_create_lists_with_cover_voice_name_and_is_idempotent(video_gen):
     data = first.json()
     assert data["available"] is True and data["unavailable_reason"] is None
     assert data["avatar_id"] == PUBLIC_AVATAR and data["voice_id"] == PUBLIC_VOICE
-    assert data["voice_name"] == "温柔女声"
+    assert data["voice_name"] == "温柔女声 · 居家好物"
     assert data["cover_url"].endswith(f"/avatars/{PUBLIC_AVATAR}/cover")
     assert data["avatar_preview_url"].endswith(f"/avatars/{PUBLIC_AVATAR}/preview")
     assert data["emotion"] == "愉快"
@@ -162,7 +162,7 @@ def test_removed_voice_marks_persona_unavailable(video_gen):
     provider.voices = lambda: []
     row = client.get(root + "/personas").json()[0]
     assert row["available"] is False and "声音已删除" in row["unavailable_reason"]
-    assert row["voice_name"] == data["voice_name"] == "温柔女声"
+    assert row["voice_name"] == data["voice_name"] == "温柔女声 · 居家好物"
 
 
 def test_voice_catalogue_outage_does_not_break_list(video_gen):
@@ -175,7 +175,7 @@ def test_voice_catalogue_outage_does_not_break_list(video_gen):
     provider.voices = broken
     response = client.get(root + "/personas")
     assert response.status_code == 200
-    assert response.json()[0]["voice_name"] == "温柔女声"
+    assert response.json()[0]["voice_name"] == "温柔女声 · 居家好物"
 
 
 def test_delete_and_switch_voice(video_gen):

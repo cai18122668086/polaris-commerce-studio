@@ -257,3 +257,19 @@ test("B8: result notes do not mention charges when prices are not configured", (
   assert.equal(t.resultBoxes(view, s => s, false)[0].note, "不会重新生成");
   assert.equal(t.resultBoxes(view, s => s)[0].note, "不会重新生成，也不会重复扣积分");
 });
+
+test("C8: an item whose unconfirmed result expired explains it and still offers retry / 换数字人", () => {
+  const view = { batch: { id: "b", created_at: "", item_ids: [], status_counts: {}, items: [
+    { id: "1", position: 0, status: "failed", error: "这条的提交结果超过 24 小时仍无法确认", publish_title: "t", script_text: "a", avatar_id: null, voice_id: null, persona_id: null, generation_task_id: "g1", drive_mode: "text", stage: "talking", version: 3 },
+    { id: "2", position: 1, status: "failed", error: "所选音色暂不可用，换一个音色再试。", publish_title: "u", script_text: "b", avatar_id: null, voice_id: null, persona_id: null, generation_task_id: "g2", drive_mode: "text", stage: "talking", version: 3 },
+  ] }, talking: [
+    { item_id: "1", queue_position: null, stage: null, video_url: null, can_retry: true, error_code: "VIDEO_PROVIDER_OUTCOME_EXPIRED" },
+    { item_id: "2", queue_position: null, stage: null, video_url: null, can_retry: true, error_code: "VIDEO_VOICE_INVALID" },
+  ], parallel_limit: 4 };
+  const [expired, other] = t.resultBoxes(view, s => s, false);
+  assert.equal(expired.state, "failed");
+  assert.equal(expired.error, "这条长时间没能确认结果，已停止核对，积分已退回。如果需要，可以换数字人重试或联系客服。");
+  assert.equal(expired.canRetry, true, "重试这一条 / 换数字人 stay available");
+  assert.equal(other.error, "所选音色暂不可用，换一个音色再试。");
+  assert.equal(other.label, "生成失败");
+});

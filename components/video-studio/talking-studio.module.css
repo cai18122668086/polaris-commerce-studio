@@ -200,5 +200,6 @@
 
 /* C10：固定形象轮流分配 */
 .page .rotationLine { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 12px; margin: 0 0 12px; color: var(--t-text); font-size: 13px; }
-.rotationRow { align-items: center; }
+.libraryRow.rotationRow { grid-template-columns: 16px 16px 36px minmax(0, 1fr); align-items: center; }
+.libraryRow.rotationRow input, .libraryRow.rotationRow .libraryOrder { margin-top: 0; }
 .rotationCover { width: 36px; height: 48px; flex: none; border-radius: 6px; object-fit: cover; background: var(--t-soft); }

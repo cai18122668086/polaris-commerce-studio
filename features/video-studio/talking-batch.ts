@@ -248,7 +248,11 @@ export type WorkItemView = {
   error: string | null; publish_title: string; script_text: string; avatar_id: string | null; voice_id: string | null;
   persona_id: string | null; generation_task_id: string | null; drive_mode: string; stage: string; version: number;
 };
-export type TalkingView = { item_id: string; queue_position: number | null; stage: string | null; video_url: string | null; can_retry: boolean; awaiting_check?: boolean; long_wait?: boolean };
+export type TalkingView = { item_id: string; queue_position: number | null; stage: string | null; video_url: string | null; can_retry: boolean; awaiting_check?: boolean; long_wait?: boolean; error_code?: string | null };
+
+/** 结果待确认超过 24 小时被停止核对（后端 C8）：冻结已释放，可以重试或换数字人。 */
+export const OUTCOME_EXPIRED = "VIDEO_PROVIDER_OUTCOME_EXPIRED";
+export const OUTCOME_EXPIRED_TEXT = "这条长时间没能确认结果，已停止核对，积分已退回。如果需要，可以换数字人重试或联系客服。";
 export type TalkingBatch = { batch: { id: string; created_at: string; item_ids: string[]; items: WorkItemView[]; status_counts: Record<string, number> }; talking: TalkingView[]; parallel_limit: number; notice?: string | null };
 
 export type ResultBox = { id: string; title: string; state: "queued" | "running" | "done" | "failed" | "checking"; label: string; videoUrl: string | null; canRetry: boolean; canCheck: boolean; error: string | null; note: string | null; position: number };
@@ -263,6 +267,7 @@ export function resultBoxes(view: TalkingBatch, stageLabel: (stage: string) => s
     if (extra?.awaiting_check) return { ...base, state: "checking", label: "结果待确认", note: priced ? "不会重新生成，也不会重复扣积分" : "不会重新生成" };
     if (extra?.long_wait && item.status !== "succeeded" && item.status !== "failed") return { ...base, state: "checking", label: "供应商排队较久", note: priced ? "系统会自动继续查询，不会重复扣费" : "系统会自动继续查询" };
     if (item.status === "succeeded") return { ...base, state: "done", label: "已完成" };
+    if (item.status === "failed" && extra?.error_code === OUTCOME_EXPIRED) return { ...base, state: "failed", label: "已停止核对", error: OUTCOME_EXPIRED_TEXT };
     if (item.status === "failed" || item.status === "canceled") return { ...base, state: "failed", label: "生成失败" };
     if (item.status === "running" || (item.status === "queued" && item.generation_task_id)) return { ...base, state: "running", label: extra?.stage ? stageLabel(extra.stage) : "正在生成" };
     return { ...base, state: "queued", label: extra?.queue_position ? `排队中 · 第 ${extra.queue_position} 位` : "排队中" };

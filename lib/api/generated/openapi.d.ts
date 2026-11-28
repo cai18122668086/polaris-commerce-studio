@@ -10832,6 +10832,8 @@ export interface components {
              * @default false
              */
             can_retry: boolean;
+            /** Error Code */
+            error_code?: string | null;
             /** Item Id */
             item_id: string;
             /**
